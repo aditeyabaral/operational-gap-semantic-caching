@@ -6,7 +6,7 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
-from scipy.stats import ks_2samp, gaussian_kde
+from scipy.stats import ks_2samp, gaussian_kde, spearmanr
 from multiprocessing import Pool
 from rich.console import Console
 from rich.table import Table
@@ -18,6 +18,54 @@ from src.analysis.util import (
     nan_to_none,
     normalize_reranker_scores,
 )
+
+# Probability-calibration metrics (Appendix: Score Distribution Analysis). Computed on the
+# ground-truth candidate's normalized score s(q,c*) against the binary label, exactly as the
+# separation metrics are. These test whether probability calibration predicts deployment
+# (P-CHR AUC); it does not (see the pooled Spearman correlations printed at the end).
+_EPS = 1e-7
+
+
+def ece_score(scores, labels, n_bins: int = 15) -> float:
+    """Expected Calibration Error, 15 equal-width bins on [0, 1]."""
+    scores = np.asarray(scores, dtype=np.float64)
+    labels = np.asarray(labels, dtype=np.float64)
+    if len(scores) == 0:
+        return float("nan")
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    n = len(scores)
+    total = 0.0
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        mask = (
+            (scores > lo) & (scores <= hi)
+            if lo > 0
+            else (scores >= lo) & (scores <= hi)
+        )
+        if not np.any(mask):
+            continue
+        conf = float(np.mean(scores[mask]))
+        acc = float(np.mean(labels[mask]))
+        total += (np.sum(mask) / n) * abs(acc - conf)
+    return float(total)
+
+
+def nll_score(scores, labels) -> float:
+    """Negative log-likelihood (binary cross-entropy) of the scores against the labels."""
+    scores = np.asarray(scores, dtype=np.float64)
+    labels = np.asarray(labels, dtype=np.float64)
+    if len(scores) == 0:
+        return float("nan")
+    p = np.clip(scores, _EPS, 1 - _EPS)
+    return float(-np.mean(labels * np.log(p) + (1 - labels) * np.log(1 - p)))
+
+
+def brier_score(scores, labels) -> float:
+    """Brier score: mean squared error between scores and labels."""
+    scores = np.asarray(scores, dtype=np.float64)
+    labels = np.asarray(labels, dtype=np.float64)
+    if len(scores) == 0:
+        return float("nan")
+    return float(np.mean((scores - labels) ** 2))
 
 
 def extract_gt_scores_labels(
@@ -201,6 +249,11 @@ def process_file(args_tuple):
     retr_overlap_kde = area_of_overlap_kde(retriever_scores, labels)
     rer_overlap_kde = area_of_overlap_kde(reranker_scores, labels)
 
+    # Probability-calibration metrics on the reranker's normalized GT score vs label.
+    rer_ece = ece_score(reranker_scores, labels)
+    rer_nll = nll_score(reranker_scores, labels)
+    rer_brier = brier_score(reranker_scores, labels)
+
     return {
         "filename": filename,
         "retriever_name": retriever_name,
@@ -214,6 +267,9 @@ def process_file(args_tuple):
         "rer_ks": rer_ks,
         "retr_overlap_kde": retr_overlap_kde,
         "rer_overlap_kde": rer_overlap_kde,
+        "rer_ece": rer_ece,
+        "rer_nll": rer_nll,
+        "rer_brier": rer_brier,
     }
 
 
@@ -249,12 +305,38 @@ if __name__ == "__main__":
         help="Path to save a JSON summary of computed metrics.",
     )
     parser.add_argument(
+        "--cls-metrics",
+        type=str,
+        default=None,
+        help=(
+            "Path to the cls_metrics.json produced by analyze_cls.py. When given, each combo's "
+            "exact P-CHR AUC is joined into the reranker table and the pooled Spearman "
+            "correlations of ECE/NLL/Brier vs exact P-CHR (over all combos) are reported."
+        ),
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=-1,
         help="Number of parallel worker processes (-1 uses all available CPUs, default: -1)",
     )
     args = parser.parse_args()
+
+    def _combo_key(retriever_name, reranker_name):
+        """Join key shared with analyze_cls labels: final path components, '+'-separated."""
+        if retriever_name is None or reranker_name is None:
+            return None
+        return f"{retriever_name.split('--')[-1]}+{reranker_name.split('--')[-1]}"
+
+    # Optional: exact P-CHR AUC per combo from analyze_cls, keyed for the join above.
+    pchr_by_combo = {}
+    if args.cls_metrics:
+        with open(args.cls_metrics) as f:
+            cls_data = json.load(f)
+        for r in cls_data.get("results", []):
+            kr = r["k_results"]
+            k_max = max(kr, key=lambda k: int(k))
+            pchr_by_combo[r["label"]] = kr[k_max]["reranker_precision_chr_auc"]
 
     calibration_data = load_calibration(args.calibration)
 
@@ -369,9 +451,14 @@ if __name__ == "__main__":
             reranker_metrics.append(
                 {
                     "label": base_name,
+                    "retriever_name": retriever_name,
+                    "reranker_name": reranker_name,
                     "rerank_auc": result["rerank_auc"],
                     "rer_ks": result["rer_ks"],
                     "rer_overlap_kde": result["rer_overlap_kde"],
+                    "rer_ece": result["rer_ece"],
+                    "rer_nll": result["rer_nll"],
+                    "rer_brier": result["rer_brier"],
                 }
             )
         else:
@@ -389,9 +476,14 @@ if __name__ == "__main__":
                 reranker_metrics.append(
                     {
                         "label": f"{retriever_name}+{reranker_name}",
+                        "retriever_name": retriever_name,
+                        "reranker_name": reranker_name,
                         "rerank_auc": result["rerank_auc"],
                         "rer_ks": result["rer_ks"],
                         "rer_overlap_kde": result["rer_overlap_kde"],
+                        "rer_ece": result["rer_ece"],
+                        "rer_nll": result["rer_nll"],
+                        "rer_brier": result["rer_brier"],
                     }
                 )
                 saved_pairs.add(pair)
@@ -416,8 +508,13 @@ if __name__ == "__main__":
         )
     console.print(ret_table)
 
+    # Join exact P-CHR AUC per combo (if provided) for the table and the correlations.
+    for entry in reranker_metrics:
+        key = _combo_key(entry.get("retriever_name"), entry.get("reranker_name"))
+        entry["p_chr_auc"] = pchr_by_combo.get(key) if key is not None else None
+
     rer_table = Table(
-        title="Reranker Score Distribution Metrics",
+        title="Reranker Score Distribution & Probability-Calibration Metrics",
         show_header=True,
         header_style="bold cyan",
     )
@@ -425,14 +522,55 @@ if __name__ == "__main__":
     rer_table.add_column("ROC AUC", justify="right", min_width=8)
     rer_table.add_column("KS Stat", justify="right", min_width=7)
     rer_table.add_column("KDE Overlap", justify="right", min_width=11)
+    rer_table.add_column("ECE", justify="right", min_width=6)
+    rer_table.add_column("NLL", justify="right", min_width=6)
+    rer_table.add_column("Brier", justify="right", min_width=6)
+    rer_table.add_column("P-CHR AUC", justify="right", min_width=9)
     for entry in reranker_metrics:
+        pchr = entry.get("p_chr_auc")
         rer_table.add_row(
             entry["label"],
             f"{entry['rerank_auc']:.4f}",
             f"{entry['rer_ks']:.4f}",
             f"{entry['rer_overlap_kde']:.4f}",
+            f"{entry['rer_ece']:.3f}",
+            f"{entry['rer_nll']:.2f}",
+            f"{entry['rer_brier']:.3f}",
+            "—" if pchr is None else f"{pchr:.3f}",
         )
     console.print(rer_table)
+
+    # Pooled Spearman correlations of probability-calibration metrics vs exact P-CHR AUC.
+    correlations = {}
+    paired = [
+        (e["rer_ece"], e["rer_nll"], e["rer_brier"], e["p_chr_auc"])
+        for e in reranker_metrics
+        if e.get("p_chr_auc") is not None
+        and all(
+            not (isinstance(v, float) and np.isnan(v))
+            for v in (e["rer_ece"], e["rer_nll"], e["rer_brier"])
+        )
+    ]
+    if len(paired) >= 3:
+        ece_v, nll_v, brier_v, pchr_v = (np.array(c, dtype=float) for c in zip(*paired))
+        corr_table = Table(
+            title=f"Probability-calibration metrics vs exact P-CHR AUC (Spearman, n={len(paired)})",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        corr_table.add_column("Metric", justify="left")
+        corr_table.add_column("Spearman ρ", justify="right")
+        corr_table.add_column("p-value", justify="right")
+        for name, vals in (("ECE", ece_v), ("NLL", nll_v), ("Brier", brier_v)):
+            rho, pval = spearmanr(vals, pchr_v)
+            correlations[name.lower()] = {
+                "spearman_vs_p_chr_auc": float(rho),
+                "pval": float(pval),
+            }
+            corr_table.add_row(name, f"{rho:.3f}", f"{pval:.2e}")
+        console.print(corr_table)
+    elif args.cls_metrics:
+        print("Not enough combos with a P-CHR join to compute correlations (need ≥ 3).")
 
     output_data = {
         "calibration": args.calibration,
@@ -452,9 +590,16 @@ if __name__ == "__main__":
                 "rerank_auc": nan_to_none(entry["rerank_auc"]),
                 "rer_ks": nan_to_none(entry["rer_ks"]),
                 "rer_overlap_kde": nan_to_none(entry["rer_overlap_kde"]),
+                "rer_ece": nan_to_none(entry["rer_ece"]),
+                "rer_nll": nan_to_none(entry["rer_nll"]),
+                "rer_brier": nan_to_none(entry["rer_brier"]),
+                "p_chr_auc": nan_to_none(entry.get("p_chr_auc"))
+                if entry.get("p_chr_auc") is not None
+                else None,
             }
             for entry in reranker_metrics
         ],
+        "calibration_vs_pchr_spearman": correlations,
     }
     with open(args.output, "w") as f:
         json.dump(output_data, f, indent=4)
