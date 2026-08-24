@@ -1,13 +1,14 @@
-import torch
 import time
+
+import torch
+from pylate import rank
+from pylate.models import ColBERT
 from redis import Redis
-from redisvl.utils.vectorize import HFTextVectorizer
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.utils.rerank import HFCrossEncoderReranker
+from redisvl.utils.vectorize import HFTextVectorizer
 from tqdm.auto import tqdm
-from pylate.models import ColBERT
-from pylate import rank
 
 
 class RetrieveAndRerankEvaluator:
@@ -31,8 +32,7 @@ class RetrieveAndRerankEvaluator:
         device: str = "cuda",
         flush_cache: bool = False,
     ):
-        """
-        Initialize the evaluator.
+        """Initialize the evaluator.
 
         Args:
             redis_host: Hostname of the Redis server.
@@ -106,8 +106,7 @@ class RetrieveAndRerankEvaluator:
         self.redis_port = redis_port
 
     def populate_cache(self, sentences: list[str]):
-        """
-        Populate the semantic cache with a list of sentences.
+        """Populate the semantic cache with a list of sentences.
 
         Args:
             sentences: Sentences to store in the cache.
@@ -123,8 +122,7 @@ class RetrieveAndRerankEvaluator:
         return self.semantic_cache.index.info()["num_docs"]
 
     def retrieve(self, query: str, num_results: int) -> list[dict]:
-        """
-        Retrieve candidate matches from the semantic cache.
+        """Retrieve candidate matches from the semantic cache.
 
         Args:
             query: Query string to search for.
@@ -141,8 +139,7 @@ class RetrieveAndRerankEvaluator:
     def rerank_crossencoder(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using a cross-encoder model.
+        """Re-rank candidates using a cross-encoder model.
 
         Args:
             query: Query string.
@@ -160,8 +157,7 @@ class RetrieveAndRerankEvaluator:
     def rerank_colbert(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using a ColBERT model via pylate.
+        """Re-rank candidates using a ColBERT model via pylate.
 
         Args:
             query: Query string.
@@ -192,8 +188,7 @@ class RetrieveAndRerankEvaluator:
     def rerank(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using the configured re-ranker.
+        """Re-rank candidates using the configured re-ranker.
 
         Dispatches to rerank_crossencoder or rerank_colbert based on reranker_type.
 
@@ -223,8 +218,7 @@ class RetrieveAndRerankEvaluator:
     def evaluate(
         self, queries: list[str], ground_truths: list[str], labels: list[int]
     ) -> dict:
-        """
-        Run the full retrieve-and-rerank pipeline over a set of queries and return evaluation results.
+        """Run the full retrieve-and-rerank pipeline over a set of queries and return evaluation results.
 
         Args:
             queries: List of query strings to evaluate.

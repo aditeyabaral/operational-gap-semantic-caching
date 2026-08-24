@@ -1,7 +1,6 @@
 import json
 import math
 import re
-from typing import Optional
 
 import numpy as np
 import torch
@@ -43,7 +42,7 @@ def extract_models_from_filename(filename: str) -> tuple:
     )
 
 
-def load_calibration(calibration_file: Optional[str]) -> dict:
+def load_calibration(calibration_file: str | None) -> dict:
     """Load calibration params from JSON. Returns empty dict if file is None."""
     if calibration_file is None:
         return {}
@@ -52,8 +51,8 @@ def load_calibration(calibration_file: Optional[str]) -> dict:
 
 
 def get_calibration_params(
-    reranker_model_name: Optional[str], calibration_data: dict
-) -> Optional[dict]:
+    reranker_model_name: str | None, calibration_data: dict
+) -> dict | None:
     """Look up calibration params for a model by its sanitized name.
 
     Sanitized names use '--' as separator (e.g. 'redis--langcache-reranker-v1-bce'),
@@ -100,8 +99,8 @@ def apply_calibrated_sigmoid(logit: float, calib: dict, method: str) -> float:
 
 def normalize_reranker_scores(
     ranked_scores: list,
-    reranker_type: Optional[str],
-    calib_params: Optional[dict] = None,
+    reranker_type: str | None,
+    calib_params: dict | None = None,
     calibration_method: str = "temperature",
 ) -> list:
     """Normalize raw reranker logits to [0, 1] probabilities.
@@ -141,7 +140,7 @@ def normalize_reranker_scores(
             return list(ranked_scores)
 
 
-def nan_to_none(x: float) -> Optional[float]:
+def nan_to_none(x: float) -> float | None:
     """Convert NaN/Inf floats to None for JSON serialization."""
     if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
         return None

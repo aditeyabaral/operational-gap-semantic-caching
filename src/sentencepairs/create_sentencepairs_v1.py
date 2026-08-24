@@ -1,14 +1,19 @@
-from datasets import load_dataset
-import os
-import pandas as pd
-from datasets import Dataset, DatasetDict, concatenate_datasets
-from datasets import Features, Value
 import multiprocessing
+import os
+
+import pandas as pd
+from datasets import (
+    Dataset,
+    DatasetDict,
+    Features,
+    Value,
+    concatenate_datasets,
+    load_dataset,
+)
 
 
 def convert_label_to_int(example):
-    """
-    Map the label to an integer.
+    """Map the label to an integer.
 
     For the PIT-2015 dataset, we follow this convention:
 

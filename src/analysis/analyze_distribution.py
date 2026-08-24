@@ -1,16 +1,17 @@
 import argparse
-import os
 import json
-import numpy as np
-from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-from sklearn.metrics import roc_auc_score
-from scipy.stats import ks_2samp, gaussian_kde, spearmanr
+import os
 from multiprocessing import Pool
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 from rich.console import Console
 from rich.table import Table
+from scipy.stats import gaussian_kde, ks_2samp, spearmanr
+from sklearn.metrics import roc_auc_score
+from tqdm.auto import tqdm
 
 from src.analysis.analyze_cls import canonical_reranker, canonical_retriever
 from src.analysis.util import (
@@ -207,9 +208,9 @@ def process_file(args_tuple):
     filename, results_dir, calibration_data, calibration_method = args_tuple
     path = os.path.join(results_dir, filename)
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error loading {path}: {e}")
         return None
     results = data.get("results", [])

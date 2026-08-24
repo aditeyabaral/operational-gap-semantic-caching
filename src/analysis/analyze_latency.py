@@ -1,13 +1,14 @@
 import argparse
-import os
 import json
-import numpy as np
-from tqdm.auto import tqdm
-from typing import List, Dict, Tuple, Any, Optional
-import matplotlib.pyplot as plt
+import os
 from multiprocessing import Pool
+from typing import Any
+
+import matplotlib.pyplot as plt
+import numpy as np
 from rich.console import Console
 from rich.table import Table
+from tqdm.auto import tqdm
 
 from src.analysis.util import extract_models_from_filename, nan_to_none
 
@@ -16,7 +17,7 @@ _OVERHEAD_COLOR = "#D65F0A"
 _ERRORBAR_COLOR = "#333333"
 
 
-def _fmt_size(n_params: Optional[int]) -> str:
+def _fmt_size(n_params: int | None) -> str:
     """Human-readable parameter count, e.g. 109482240 -> '110M'."""
     if n_params is None:
         return "—"
@@ -25,7 +26,7 @@ def _fmt_size(n_params: Optional[int]) -> str:
     return f"{round(n_params / 1e6)}M"
 
 
-def count_model_params(sanitized_name: str) -> Optional[int]:
+def count_model_params(sanitized_name: str) -> int | None:
     """Total parameter count for a reranker, loaded from its weights (paper Size column).
 
     ``sanitized_name`` is the filename form ('colbert-ir--colbertv2.0'); the HF id is recovered by
@@ -48,8 +49,8 @@ def count_model_params(sanitized_name: str) -> Optional[int]:
 
 
 def extract_durations(
-    results: List[Dict[str, Any]],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    results: list[dict[str, Any]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ret, rer, tot = [], [], []
     for item in results:
         r = item.get("retrieval_duration")
@@ -77,7 +78,7 @@ def compute_latency_stats(
     retrieval_ms: np.ndarray,
     reranking_ms: np.ndarray,
     total_ms: np.ndarray,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     n = len(total_ms)
     ddof = 1 if n > 1 else 0
     return {
@@ -102,14 +103,14 @@ def _truncate_label(label: str, maxlen: int = 75) -> str:
 
 
 def process_file(
-    args_tuple: Tuple[str, str],
-) -> Optional[Dict[str, Any]]:
+    args_tuple: tuple[str, str],
+) -> dict[str, Any] | None:
     filename, results_dir = args_tuple
     path = os.path.join(results_dir, filename)
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error loading {path}: {e}")
         return None
 
@@ -139,8 +140,8 @@ def process_file(
 
 
 def _plot_vertical_bars(
-    segments: List[Tuple[np.ndarray, str, str]],
-    labels: List[str],
+    segments: list[tuple[np.ndarray, str, str]],
+    labels: list[str],
     title: str,
     output_path: str,
 ) -> None:
@@ -173,7 +174,7 @@ def _plot_vertical_bars(
 
 
 def plot_latency_bars(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -195,7 +196,7 @@ def plot_latency_bars(
 
 
 def plot_latency_per_reranker(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -204,7 +205,7 @@ def plot_latency_per_reranker(
 
     from collections import defaultdict
 
-    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in stats:
         key = s["reranker_name"].split("--")[-1] if s["reranker_name"] else "unknown"
         groups[key].append(s)
@@ -237,7 +238,7 @@ def plot_latency_per_reranker(
 
 
 def plot_latency_per_retriever(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -246,7 +247,7 @@ def plot_latency_per_retriever(
 
     from collections import defaultdict
 
-    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in stats:
         key = s["retriever_name"].split("--")[-1] if s["retriever_name"] else "unknown"
         groups[key].append(s)
@@ -429,7 +430,7 @@ if __name__ == "__main__":
 
     from collections import defaultdict
 
-    reranker_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    reranker_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in all_stats:
         key = s["reranker_name"].split("--")[-1] if s["reranker_name"] else "unknown"
         reranker_groups[key].append(s)
@@ -465,7 +466,7 @@ if __name__ == "__main__":
         )
     console.print(reranker_table)
 
-    retriever_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    retriever_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in all_stats:
         key = s["retriever_name"].split("--")[-1] if s["retriever_name"] else "unknown"
         retriever_groups[key].append(s)

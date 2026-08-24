@@ -236,8 +236,7 @@ if __name__ == "__main__":
     )
     logits = np.array(logits, dtype=np.float64)
     print(
-        f"Logit stats: min={logits.min():.4f}, max={logits.max():.4f}, "
-        f"mean={logits.mean():.4f}, std={logits.std():.4f}"
+        f"Logit stats: min={logits.min():.4f}, max={logits.max():.4f}, mean={logits.mean():.4f}, std={logits.std():.4f}"
     )
 
     # Fit temperature scaling

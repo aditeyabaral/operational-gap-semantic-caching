@@ -1,21 +1,21 @@
-from datasets import load_dataset, concatenate_datasets, Dataset
-from collections import defaultdict
-from tqdm import tqdm
-import numpy as np
 import gc
 import os
-import tempfile
 import shutil
+import tempfile
+from collections import defaultdict
+
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+from datasets import Dataset, concatenate_datasets, load_dataset
+from tqdm import tqdm
 
 
 def load_langcache_sentencepairs_splits(
     subset_names: dict[str, str] = {"redis/langcache-sentencepairs-v3": ["all"]},
     combine_train_and_val: bool = False,
 ) -> tuple[Dataset, Dataset, Dataset]:
-    """
-    Load train, val and test datasets from the LangCache Sentence Pairs dataset.
+    """Load train, val and test datasets from the LangCache Sentence Pairs dataset.
 
     Args:
         subset_names: Dictionary of dataset names and subset names to load. If not provided, all subsets will be loaded.
@@ -76,8 +76,7 @@ def to_infonce(
     seed: int = 42,
     cache_dir: str = None,
 ) -> Dataset:
-    """
-    Convert a sentence-pairs dataset (sentence1, sentence2, label in {0,1})
+    """Convert a sentence-pairs dataset (sentence1, sentence2, label in {0,1})
     into InfoNCE-ready examples with columns: anchor, positive, negative_1, negative_2, ..., negative_n.
 
     Args:
@@ -242,43 +241,35 @@ def to_infonce(
                                 (j for j in range(n_sent) if j not in blocked_set), 0
                             )
                     return result
-                else:
-                    result = np.empty(size, dtype=np.int32)
-                    sampled = set()
-                    for i in range(size):
-                        for _ in range(1000):
-                            candidate = np_rng.randint(0, n_sent)
-                            if (
-                                candidate not in blocked_set
-                                and candidate not in sampled
-                            ):
-                                result[i] = candidate
-                                sampled.add(candidate)
-                                break
-                        else:
-                            result[i] = next(
-                                (
-                                    j
-                                    for j in range(n_sent)
-                                    if j not in blocked_set and j not in sampled
-                                ),
-                                0,
-                            )
-                            sampled.add(result[i])
-                    return result
-            else:
-                mask = np.ones(n_sent, dtype=bool)
-                mask[list(blocked_set)] = False
-                candidates = all_ids[mask]  # noqa: F821
-                if len(candidates) >= size:
-                    return np_rng.choice(candidates, size=size, replace=False)
-                elif len(candidates) > 0:
-                    return np_rng.choice(candidates, size=size, replace=True)
-                else:
-                    fallback = next(
-                        (i for i in range(n_sent) if i not in blocked_set), 0
-                    )
-                    return np.full(size, fallback, dtype=np.int32)
+                result = np.empty(size, dtype=np.int32)
+                sampled = set()
+                for i in range(size):
+                    for _ in range(1000):
+                        candidate = np_rng.randint(0, n_sent)
+                        if candidate not in blocked_set and candidate not in sampled:
+                            result[i] = candidate
+                            sampled.add(candidate)
+                            break
+                    else:
+                        result[i] = next(
+                            (
+                                j
+                                for j in range(n_sent)
+                                if j not in blocked_set and j not in sampled
+                            ),
+                            0,
+                        )
+                        sampled.add(result[i])
+                return result
+            mask = np.ones(n_sent, dtype=bool)
+            mask[list(blocked_set)] = False
+            candidates = all_ids[mask]  # noqa: F821
+            if len(candidates) >= size:
+                return np_rng.choice(candidates, size=size, replace=False)
+            if len(candidates) > 0:
+                return np_rng.choice(candidates, size=size, replace=True)
+            fallback = next((i for i in range(n_sent) if i not in blocked_set), 0)
+            return np.full(size, fallback, dtype=np.int32)
 
         idx = 0
         print("Generating triplets...")

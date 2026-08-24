@@ -1,17 +1,18 @@
 import argparse
-import os
 import json
 import math
-import numpy as np
-from tqdm.auto import tqdm
-from typing import List, Dict, Tuple, Any, Optional
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import auc, average_precision_score, precision_recall_curve
-from multiprocessing import Pool
+import os
 from collections import defaultdict
+from multiprocessing import Pool
+from typing import Any
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 from rich.console import Console
 from rich.table import Table
+from sklearn.metrics import auc, average_precision_score, precision_recall_curve
+from tqdm.auto import tqdm
 
 from src.analysis.util import (
     get_calibration_params,
@@ -79,7 +80,7 @@ def load_results(dir: str):
     return results
 
 
-def slice_datapoint_for_k(dp: Dict[str, Any], k: int) -> Dict[str, Any]:
+def slice_datapoint_for_k(dp: dict[str, Any], k: int) -> dict[str, Any]:
     """Simulate top-k retrieval by slicing candidates and looking up reranker scores."""
     top_k_candidates = dp["retrieved_candidates"][:k]
     top_k_set = set(top_k_candidates)
@@ -103,14 +104,14 @@ def slice_datapoint_for_k(dp: Dict[str, Any], k: int) -> Dict[str, Any]:
 
 
 def _precompute_scores(
-    data_points: List[Dict[str, Any]],
+    data_points: list[dict[str, Any]],
     setup: str,
     normalize_scores: bool = False,
     reranker_type: str = None,
-    calib_params: Optional[dict] = None,
+    calib_params: dict | None = None,
     calibration_method: str = "temperature",
     force_transform: str = "native",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Pre-compute threshold-independent per-datapoint scores for a fast threshold sweep.
 
     Returns (labels, gt_scores, top_scores, is_correct, has_candidates):
@@ -208,17 +209,17 @@ def _precompute_scores(
 
 
 def compute_metrics_across_thresholds(
-    data_points: List[Dict[str, Any]],
-    thresholds: List[float],
+    data_points: list[dict[str, Any]],
+    thresholds: list[float],
     setup: str,
     normalize_scores: bool = False,
     reranker_type: str = None,
-    calib_params: Optional[dict] = None,
+    calib_params: dict | None = None,
     calibration_method: str = "temperature",
     force_transform: str = "native",
     pbar=None,
-) -> Tuple[
-    List[Dict[str, float]], np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+) -> tuple[
+    list[dict[str, float]], np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
 ]:
     y_true, y_scores, top_scores, is_correct, has_candidates = _precompute_scores(
         data_points,
@@ -311,7 +312,7 @@ def _exact_operating_points(
     top_scores: np.ndarray,
     is_correct: np.ndarray,
     has_candidates: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, int]:
+) -> tuple[np.ndarray, np.ndarray, int]:
     """Realizable (fires, cum_valid, N) at each distinct top-1 score, grid-free.
 
     Queries fire in descending top-1 score order; ties fire together (exactly what a threshold
@@ -340,7 +341,7 @@ def exact_chr_curve(
     top_scores: np.ndarray,
     is_correct: np.ndarray,
     has_candidates: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, float]:
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Exact Precision-CHR operating points (grid-free) and their AUC.
 
     The precision-vs-CHR step function swept through every distinct top-1 score -- the exact
@@ -369,7 +370,7 @@ def exact_vchr_curve(
     top_scores: np.ndarray,
     is_correct: np.ndarray,
     has_candidates: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, float]:
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Exact Precision-VCHR operating points (grid-free) and their AUC (x-axis = valid fires / N)."""
     fires, cum_valid, n_total = _exact_operating_points(
         labels, top_scores, is_correct, has_candidates
@@ -386,7 +387,7 @@ def exact_vchr_curve(
 
 def decompose_gap(
     pr_auc: float, p_chr_auc: float, positive_rate: float
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Operational-gap decomposition + ORR from the primary metrics (paper Table 1/2 columns).
 
     delta_op = PR-AUC - P-CHR AUC; delta_str = 1 - p(1 - ln p) is the irreducible structural
@@ -411,7 +412,7 @@ def compute_auc_metrics(
     top_scores: np.ndarray,
     is_correct: np.ndarray,
     has_candidates: np.ndarray,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """PR-AUC (oracle, rank-based) + grid-free exact P-CHR / P-VCHR AUC + gap decomposition.
 
     PR-AUC ranks the ground-truth score s(q,c*) and is already exact (average_precision_score).
@@ -447,7 +448,7 @@ def compute_auc_metrics(
     return result
 
 
-def _f1_optimal_metrics(metrics: List[Dict[str, float]]) -> Tuple[float, float, float]:
+def _f1_optimal_metrics(metrics: list[dict[str, float]]) -> tuple[float, float, float]:
     """Return (precision, recall, valid_cache_hit_ratio) at the threshold that maximizes F1."""
     best_f1, best_p, best_r, best_vchr = -1.0, 0.0, 0.0, 0.0
     for m in metrics:
@@ -459,8 +460,8 @@ def _f1_optimal_metrics(metrics: List[Dict[str, float]]) -> Tuple[float, float, 
 
 
 def _build_pr_curves_for_k(
-    all_results: List[Dict[str, Any]], k: int, colors: np.ndarray
-) -> List[Dict[str, Any]]:
+    all_results: list[dict[str, Any]], k: int, colors: np.ndarray
+) -> list[dict[str, Any]]:
     pr_curves = []
     plotted_retrievers = set()
     for idx, result in enumerate(all_results):
@@ -509,8 +510,8 @@ def _build_pr_curves_for_k(
 
 
 def _build_chr_curves_for_k(
-    all_results: List[Dict[str, Any]], k: int, colors: np.ndarray
-) -> List[Dict[str, Any]]:
+    all_results: list[dict[str, Any]], k: int, colors: np.ndarray
+) -> list[dict[str, Any]]:
     chr_curves = []
     plotted_retrievers = set()
     for idx, result in enumerate(all_results):
@@ -556,8 +557,8 @@ def _build_chr_curves_for_k(
 
 
 def _build_vchr_curves_for_k(
-    all_results: List[Dict[str, Any]], k: int, colors: np.ndarray
-) -> List[Dict[str, Any]]:
+    all_results: list[dict[str, Any]], k: int, colors: np.ndarray
+) -> list[dict[str, Any]]:
     vchr_curves = []
     plotted_retrievers = set()
     for idx, result in enumerate(all_results):
@@ -603,7 +604,7 @@ def _build_vchr_curves_for_k(
 
 
 def plot_auc_vs_k(
-    all_processed: List[Dict[str, Any]],
+    all_processed: list[dict[str, Any]],
     output_dir: str,
 ):
     if not all_processed:
@@ -807,7 +808,7 @@ def _style_curve_axes(ax, xlabel, title, legend_loc):
 
 
 def plot_per_k_curves(
-    all_processed: List[Dict[str, Any]],
+    all_processed: list[dict[str, Any]],
     output_dir: str,
 ):
     if not all_processed:
@@ -887,9 +888,9 @@ def process_result(args_tuple):
     ) = args_tuple
 
     try:
-        with open(result["file_path"], "r") as f:
+        with open(result["file_path"]) as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error loading {result['file_path']}: {e}")
         return None
 
@@ -1046,8 +1047,7 @@ if __name__ == "__main__":
     print(f"  Output directory: {args.plots_dir}")
     print(f"  Output JSON:      {args.output}")
     print(
-        f"  Thresholds:       {len(args.thresholds)} values "
-        f"[{min(args.thresholds):.3f}, {max(args.thresholds):.3f}]"
+        f"  Thresholds:       {len(args.thresholds)} values [{min(args.thresholds):.3f}, {max(args.thresholds):.3f}]"
     )
     print(f"  Calibration:      {args.calibration or 'none'}")
     if args.calibration:
@@ -1137,22 +1137,22 @@ if __name__ == "__main__":
     # The averaged row averages the PRIMARY metrics across retrievers and then re-derives the
     # decomposition (Delta_op = mean PR - mean P-CHR), so the rows stay internally consistent.
     # ----------------------------------------------------------------------------------
-    def _combo_labels(combo_label: str) -> Tuple[str, str]:
+    def _combo_labels(combo_label: str) -> tuple[str, str]:
         retriever = combo_label.split("+")[0] if "+" in combo_label else combo_label
         reranker = combo_label.split("+", 1)[1] if "+" in combo_label else ""
         return retriever, reranker
 
     PRIMARY = ["pr_auc", "precision_chr_auc", "precision_vchr_auc", "positive_rate"]
 
-    def _avg_over_retrievers(rows: List[Dict[str, float]]) -> Dict[str, float]:
+    def _avg_over_retrievers(rows: list[dict[str, float]]) -> dict[str, float]:
         avg = {k: float(np.mean([r[k] for r in rows])) for k in PRIMARY}
         avg.update(
             decompose_gap(avg["pr_auc"], avg["precision_chr_auc"], avg["positive_rate"])
         )
         return avg
 
-    full: Dict[str, Dict[str, Dict[str, float]]] = defaultdict(dict)
-    retriever_baselines: Dict[str, Dict[str, float]] = {}
+    full: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
+    retriever_baselines: dict[str, dict[str, float]] = {}
     for result in all_processed:
         retriever, reranker = _combo_labels(result["label"])
         kr = result["k_results"][result["K"]]
@@ -1165,7 +1165,7 @@ if __name__ == "__main__":
         for rr in rerankers
     }
 
-    def _gap_table(title: str, rows: List[Tuple[str, Dict[str, float]]]) -> Table:
+    def _gap_table(title: str, rows: list[tuple[str, dict[str, float]]]) -> Table:
         t = Table(title=title, show_header=True, header_style="bold magenta")
         t.add_column("Model", justify="left", min_width=28)
         for col in ("PR-AUC", "P-CHR AUC", "P-VCHR AUC", "Δ_op", "Δ_util", "ORR"):
@@ -1273,7 +1273,7 @@ if __name__ == "__main__":
             {"label": r["label"], "K": r["K"], "k_results": k_results_json}
         )
 
-    def _agg_json(d: Dict[str, float]) -> Dict[str, float]:
+    def _agg_json(d: dict[str, float]) -> dict[str, float]:
         keys = [
             "pr_auc",
             "precision_chr_auc",

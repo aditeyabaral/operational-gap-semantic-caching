@@ -7,35 +7,33 @@ import sys
 
 sys.path.insert(0, ".")
 
-import random
-import torch
-import numpy as np
 import multiprocessing
+import random
 
+import numpy as np
+import torch
 from sentence_transformers.cross_encoder import (
     CrossEncoder,
+    CrossEncoderModelCardData,
     CrossEncoderTrainer,
     CrossEncoderTrainingArguments,
-    CrossEncoderModelCardData,
 )
-from sentence_transformers.training_args import BatchSamplers
-from sentence_transformers.evaluation import SequentialEvaluator
-
 from sentence_transformers.cross_encoder.evaluation import (
     CrossEncoderClassificationEvaluator,
 )
 from sentence_transformers.cross_encoder.losses import (
     BinaryCrossEntropyLoss,
-    MultipleNegativesRankingLoss,
     MSELoss,
+    MultipleNegativesRankingLoss,
 )
+from sentence_transformers.evaluation import SequentialEvaluator
+from sentence_transformers.training_args import BatchSamplers
 
+from src.reranker.cache_evaluator import CacheEvaluator
 from src.reranker.util import (
     load_langcache_sentencepairs_splits,
     to_infonce,
 )
-from src.reranker.cache_evaluator import CacheEvaluator
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Fine-tune a CrossEncoder model")

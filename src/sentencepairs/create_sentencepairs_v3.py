@@ -1,16 +1,21 @@
-from datasets import load_dataset
+import multiprocessing
 import os
 import re
-import pandas as pd
-from datasets import Dataset, DatasetDict, concatenate_datasets
-from datasets import Features, Value
 from itertools import combinations
-import multiprocessing
+
+import pandas as pd
+from datasets import (
+    Dataset,
+    DatasetDict,
+    Features,
+    Value,
+    concatenate_datasets,
+    load_dataset,
+)
 
 
 def convert_label_to_int(example):
-    """
-    Map the label to an integer.
+    """Map the label to an integer.
 
     For the PIT-2015 dataset, we follow this convention:
 
@@ -45,9 +50,7 @@ def standardize_labels(dataset):
 
 
 def remove_null_examples(dataset):
-    """
-    Remove examples with null values in the sentence1 or sentence2 columns.
-    """
+    """Remove examples with null values in the sentence1 or sentence2 columns."""
     return dataset.filter(
         lambda x: x.get("sentence1") is not None and x.get("sentence2") is not None,
         num_proc=multiprocessing.cpu_count(),
@@ -55,8 +58,7 @@ def remove_null_examples(dataset):
 
 
 def load_paws_dataset():
-    """
-    Load the PAWS dataset from the Hugging Face Hub.
+    """Load the PAWS dataset from the Hugging Face Hub.
 
     Subset: unlabeled_final
     Splits: train, test
@@ -72,8 +74,7 @@ def load_paws_dataset():
 
 
 def load_mrpc_dataset():
-    """
-    Load the MRPC dataset from the Hugging Face Hub.
+    """Load the MRPC dataset from the Hugging Face Hub.
 
     Splits: train, validation, test
     """
@@ -90,8 +91,7 @@ def load_mrpc_dataset():
 
 
 def load_qqp_dataset():
-    """
-    Load the QQP dataset from the Hugging Face Hub.
+    """Load the QQP dataset from the Hugging Face Hub.
 
     Splits: train, test
     """
@@ -110,8 +110,7 @@ def load_qqp_dataset():
 
 
 def load_stsb_dataset():
-    """
-    Load the STS-B dataset from the Hugging Face Hub.
+    """Load the STS-B dataset from the Hugging Face Hub.
 
     Labels are binarized: scores > 3.5 are positive, others negative.
 
@@ -143,8 +142,7 @@ def load_stsb_dataset():
 
 
 def load_opusparcus_dataset(dir: str = "data/opusparcus"):
-    """
-    Load the OpusParCus dataset from the local directory.
+    """Load the OpusParCus dataset from the local directory.
 
     Only English examples are retained. Train split filters by quality >= 90.
 
@@ -209,8 +207,7 @@ def load_opusparcus_dataset(dir: str = "data/opusparcus"):
 
 
 def load_parade_dataset(dir: str = "data/parade"):
-    """
-    Load the PARADE dataset from the local directory.
+    """Load the PARADE dataset from the local directory.
 
     Splits: train, validation, test
     """
@@ -235,8 +232,7 @@ def load_parade_dataset(dir: str = "data/parade"):
 
 
 def load_ttic31190_dataset(dir: str = "data/ttic31190"):
-    """
-    Load the TTIC-31190 dataset from the local directory.
+    """Load the TTIC-31190 dataset from the local directory.
 
     Train split contains only positive pairs (no labels in source file).
 
@@ -274,8 +270,7 @@ def load_ttic31190_dataset(dir: str = "data/ttic31190"):
 
 
 def load_pit2015_dataset(dir: str = "data/pit2015"):
-    """
-    Load the PIT-2015 dataset from the local directory.
+    """Load the PIT-2015 dataset from the local directory.
 
     Splits: train, validation, test
     """
@@ -308,8 +303,7 @@ def load_pit2015_dataset(dir: str = "data/pit2015"):
 
 
 def load_apt_dataset(dir: str = "data/apt"):
-    """
-    Load the APT dataset from the local directory.
+    """Load the APT dataset from the local directory.
 
     Splits: train, test
     """
@@ -326,8 +320,7 @@ def load_apt_dataset(dir: str = "data/apt"):
 
 
 def load_sick_dataset(dir: str = "data/sick"):
-    """
-    Load the SICK dataset from the local directory.
+    """Load the SICK dataset from the local directory.
 
     Labels are binarized: CONTRADICTION -> 0, all others -> 1.
 
@@ -355,8 +348,7 @@ def load_sick_dataset(dir: str = "data/sick"):
 
 
 def load_tapaco_dataset():
-    """
-    Load the TAPACO dataset from the Hugging Face Hub.
+    """Load the TAPACO dataset from the Hugging Face Hub.
 
     English subset only. Pairs are generated from paraphrase clusters.
 
@@ -388,8 +380,7 @@ def load_tapaco_dataset():
 
 
 def load_paraphrase_collections_dataset():
-    """
-    Load the Paraphrase Collections dataset from the Hugging Face Hub.
+    """Load the Paraphrase Collections dataset from the Hugging Face Hub.
 
     All examples are positive pairs.
 
@@ -405,8 +396,7 @@ def load_paraphrase_collections_dataset():
 
 
 def load_chatgpt_paraphrases_dataset():
-    """
-    Load the ChatGPT Paraphrases dataset from the Hugging Face Hub.
+    """Load the ChatGPT Paraphrases dataset from the Hugging Face Hub.
 
     All examples are positive pairs.
 
@@ -422,8 +412,7 @@ def load_chatgpt_paraphrases_dataset():
 
 
 def load_paranmt_dataset(dir: str = "data/paranmt/para-nmt-5m-processed"):
-    """
-    Load the ParaNMT-5M dataset from the local directory.
+    """Load the ParaNMT-5M dataset from the local directory.
 
     All examples are positive pairs.
 
@@ -441,8 +430,7 @@ def load_paranmt_dataset(dir: str = "data/paranmt/para-nmt-5m-processed"):
 
 
 def load_task275_enhanced_wsc_paraphrase_generation_dataset():
-    """
-    Load the Task 275 Enhanced WSC Paraphrase Generation dataset from the Hugging Face Hub.
+    """Load the Task 275 Enhanced WSC Paraphrase Generation dataset from the Hugging Face Hub.
 
     Splits: train, validation, test
     """
@@ -475,8 +463,7 @@ def load_task275_enhanced_wsc_paraphrase_generation_dataset():
 
 
 def load_llm_paraphrases_dataset():
-    """
-    Load the LLM Paraphrases dataset from the Hugging Face Hub.
+    """Load the LLM Paraphrases dataset from the Hugging Face Hub.
 
     Splits: train, test
     """
@@ -497,8 +484,7 @@ def load_llm_paraphrases_dataset():
 
 
 def load_parabank2_dataset(dir: str = "data/parabank2"):
-    """
-    Load the ParaBank2 dataset from the local directory.
+    """Load the ParaBank2 dataset from the local directory.
 
     All examples are positive pairs.
 

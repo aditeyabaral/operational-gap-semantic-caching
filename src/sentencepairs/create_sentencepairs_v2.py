@@ -1,14 +1,19 @@
-from datasets import load_dataset
-import os
-import pandas as pd
-from datasets import Dataset, DatasetDict, concatenate_datasets
-from datasets import Features, Value
 import multiprocessing
+import os
+
+import pandas as pd
+from datasets import (
+    Dataset,
+    DatasetDict,
+    Features,
+    Value,
+    concatenate_datasets,
+    load_dataset,
+)
 
 
 def convert_label_to_int(example):
-    """
-    Map the label to an integer.
+    """Map the label to an integer.
 
     For the PIT-2015 dataset, we follow this convention:
 
@@ -200,9 +205,7 @@ def load_sick_dataset(dir: str = "data/sick"):
 
 
 def load_llm_paraphrases_dataset():
-    """
-    Load LLM-generated paraphrase pairs from HuggingFace.
-    """
+    """Load LLM-generated paraphrase pairs from HuggingFace."""
     dataset = load_dataset("redis/llm-paraphrases")
     train_dataset = dataset["train"].rename_columns(
         {"sentence_a": "sentence1", "sentence_b": "sentence2"}
