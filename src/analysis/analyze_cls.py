@@ -36,7 +36,7 @@ RERANKER_CANONICAL = {
     "gte-reranker-modernbert-base": "GTE-Reranker-ModernBERT-base",
     "ms-marco-MiniLM-L12-v2": "ms-marco-MiniLM-L12-v2",
     "langcache-reranker-v1-mnrl": "LangCache-Reranker-v1-MNRL",
-    "langcache-reranker-v2-mrnl": "LangCache-Reranker-v2-MNRL",
+    "langcache-reranker-v2-mnrl": "LangCache-Reranker-v2-MNRL",
     "langcache-reranker-v1-bce": "LangCache-Reranker-v1-BCE",
     "langcache-reranker-v2-bce": "LangCache-Reranker-v2-BCE",
 }
