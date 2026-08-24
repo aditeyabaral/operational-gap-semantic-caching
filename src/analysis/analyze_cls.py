@@ -35,10 +35,10 @@ RERANKER_CANONICAL = {
     "GTE-ModernColBERT-v1": "GTE-ModernColBERT-v1",
     "gte-reranker-modernbert-base": "GTE-Reranker-ModernBERT-base",
     "ms-marco-MiniLM-L12-v2": "ms-marco-MiniLM-L12-v2",
-    "langcache-reranker-v1-softmnrl-triplet": "LangCache-Reranker-v1-MNRL",
-    "langcache-reranker-v2-softmnrl-triplet": "LangCache-Reranker-v2-MNRL",
-    "langcache-reranker-v1": "LangCache-Reranker-v1-BCE",
-    "langcache-reranker-v2-modernbert-bce-eps0.5": "LangCache-Reranker-v2-BCE",
+    "langcache-reranker-v1-mnrl": "LangCache-Reranker-v1-MNRL",
+    "langcache-reranker-v2-mrnl": "LangCache-Reranker-v2-MNRL",
+    "langcache-reranker-v1-bce": "LangCache-Reranker-v1-BCE",
+    "langcache-reranker-v2-bce": "LangCache-Reranker-v2-BCE",
 }
 RETRIEVER_CANONICAL = {
     "langcache-embed-v3-small": "LangCache-Embed-v3",
