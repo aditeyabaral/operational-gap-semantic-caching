@@ -39,6 +39,7 @@ Semantic caching cuts LLM inference costs by serving a cached response when a ne
   - [2. Training](#2-training)
   - [3. Evaluation](#3-evaluation)
   - [4. Analysis](#4-analysis)
+- [License](#license)
 
 ## Overview
 
@@ -527,3 +528,7 @@ Arguments: `--results-dir`, `--plots-dir`, `--output` (all required), `--workers
 - `--count-params` — populates the **Size** column by loading each reranker on CPU and summing parameters. Off by default so the run needs no model downloads (the column shows `—` when omitted).
 
 Outputs `latency_breakdown.png`, `latency_per_reranker.png`, `latency_per_retriever.png`, a `rich` table, and a metrics JSON.
+
+## License
+
+This project is licensed under the Apache License 2.0.
