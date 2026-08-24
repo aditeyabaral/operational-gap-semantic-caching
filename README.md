@@ -8,13 +8,13 @@ If you use this code, the models, or the datasets, please cite:
 
 ```bibtex
 @misc{baral2026closingoperationalgapsemantic,
-      title={Closing the Operational Gap in Semantic Caching}, 
+      title={Closing the Operational Gap in Semantic Caching},
       author={Aditeya Baral and Radoslav Ralev and Iliya Sotirov Zhechev and Srijith Rajamohan and Jen Agarwal},
       year={2026},
       eprint={2606.19719},
       archivePrefix={arXiv},
       primaryClass={cs.IR},
-      url={https://arxiv.org/abs/2606.19719}, 
+      url={https://arxiv.org/abs/2606.19719},
 }
 ```
 
@@ -72,10 +72,11 @@ These definitions make the repository self-contained; see the paper for full tre
 .
 ├── src/
 │   ├── analysis/
-│   │   ├── analyze_cls.py              # PR-AUC and P-CHR-AUC metric analysis and plots
-│   │   ├── analyze_distribution.py    # Score distribution (KDE) analysis and plots
+│   │   ├── analyze_cls.py              # PR-AUC, exact P-CHR/P-VCHR AUC, ORR + gap decomposition, curves
+│   │   ├── analyze_distribution.py    # Score distribution (KDE) + ECE/NLL/Brier + correlations
 │   │   ├── analyze_latency.py         # Retrieval and reranking latency analysis and plots
-│   │   ├── compute_calibration.py     # Temperature and Platt scaling calibration
+│   │   ├── compute_calibration.py     # Temperature/Platt fitting + calibration-parameter table
+│   │   ├── dataset_stats.py           # Per-version dataset split statistics
 │   │   └── util.py                     # Shared utilities (library module)
 │   ├── eval/
 │   │   ├── eval_reranker.py            # End-to-end retrieval + re-ranking evaluation
@@ -162,7 +163,7 @@ All models and datasets introduced in the paper are published under the [`redis`
 
 ### Baselines evaluated
 
-- **Retrievers:** `Snowflake/snowflake-arctic-embed-m-v1.5`, `Snowflake/snowflake-arctic-embed-m-v2.0`, `BAAI/bge-base-en-v1.5`, `intfloat/e5-base-v2`, `nomic-ai/nomic-embed-text-v1.5`, `Alibaba-NLP/gte-modernbert-base`
+- **Retrievers:** `BAAI/bge-base-en-v1.5`, `Alibaba-NLP/gte-modernbert-base`, `jinaai/jina-embeddings-v2-base-en`, `nomic-ai/nomic-embed-text-v1.5`, `intfloat/e5-base-v2`, `Snowflake/snowflake-arctic-embed-m-v2.0`
 - **Cross-encoder re-rankers:** `cross-encoder/ms-marco-MiniLM-L12-v2`, `Alibaba-NLP/gte-reranker-modernbert-base`
 - **ColBERT re-rankers:** `lightonai/ColBERT-Zero`, `lightonai/GTE-ModernColBERT-v1`, `lightonai/Reason-ModernColBERT`, `colbert-ir/colbertv2.0`
 
@@ -173,7 +174,7 @@ Three cumulative versions of the sentence-pair dataset are provided, each buildi
 | Version | Train | Val | Test | Sources |
 |---------|------:|----:|-----:|---------|
 | [v1](https://huggingface.co/datasets/redis/langcache-sentencepairs-v1) | 1M | 8.4K | 62K | APT, PAWS, QQP, SICK, STS-B, MRPC, PARADE, PIT-2015 |
-| [v2](https://huggingface.co/datasets/redis/langcache-sentencepairs-v2) | 8M | 8.4K | 74K | v1 + LLM-generated paraphrases |
+| [v2](https://huggingface.co/datasets/redis/langcache-sentencepairs-v2) | 8M | 8.4K | 72K | v1 + LLM-generated paraphrases |
 | [v3](https://huggingface.co/datasets/redis/langcache-sentencepairs-v3) | 40M | 10.8K | 74K | v2 + OpusParcus, TTIC-31190, TaPaCo, Paraphrase Collections, ChatGPT Paraphrases, ParaNMT-5M, Task275-WSC, ParaBank2 |
 
 All three versions are pre-built and published on the Hub (linked above), so you do **not** need to rebuild them to reproduce results — they are loaded automatically by the training and evaluation scripts. The paper uses **v3**.
@@ -452,9 +453,17 @@ python src/analysis/compute_calibration.py \
 | `--batch-size` | `64` | Inference batch size |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
+To print the **calibration-parameter table** (Table: calib-params) — the fitted `T`, Platt `a`/`b`, and the change in exact P-CHR AUC under calibration — pass `--report` (no GPU). Δ P-CHR AUC is exactly `0.000` because temperature/Platt scaling are strictly monotone and P-CHR AUC is rank-invariant; supplying a native and a calibrated `cls_metrics.json` verifies this from data:
+
+```bash
+python src/analysis/compute_calibration.py --report --output calibration_params.json \
+  --native-cls-metrics plots/classification/cls_metrics.json \
+  --calibrated-cls-metrics plots/calibrated/cls_metrics.json
+```
+
 #### PR-AUC and P-CHR-AUC (classification)
 
-Computes PR-AUC, Precision–CHR AUC and Precision–VCHR AUC for every combination across `k = 1..K`, plus precision/recall at the F1-optimal threshold, and renders the paper's curves.
+Computes PR-AUC and **exact (grid-free)** Precision–CHR / Precision–VCHR AUC for every combination across `k = 1..K`, derives the operational-gap decomposition (`Δ_op`, `Δ_str`, `Δ_util`) and **ORR**, and renders the paper's curves. In one run over all combinations it prints, in addition to the per-combo tables, the **per-retriever baselines** table and the **per-reranker averages over retrievers** table (the two headline tables).
 
 ```bash
 python src/analysis/analyze_cls.py \
@@ -469,37 +478,46 @@ python src/analysis/analyze_cls.py \
 |----------|---------|-------------|
 | `--results-dir` | *(required)* | Directory of evaluation result JSONs |
 | `--plots-dir` | *(required)* | Output directory for plots |
-| `--output` | *(required)* | JSON summary of computed metrics |
-| `--thresholds` | `0.0–1.0` step `0.01` | Threshold values to sweep |
+| `--output` | *(required)* | JSON summary of computed metrics (per-combo + `aggregates`) |
+| `--transform` | `native` | Score transform for the normalization ablation: `native`, `pool_softmax`, or `raw_sigmoid` |
+| `--thresholds` | `0.0–1.0` step `0.01` | Grid used only for the auxiliary F1-optimal precision/recall (the P-CHR/P-VCHR AUCs are grid-free) |
 | `--calibration` | `None` | `calibration_params.json` from `compute_calibration.py` |
 | `--calibration-method` | `temperature` | `temperature` or `platt` |
 | `--workers` | `-1` | Parallel workers (`-1` = all CPUs) |
 
-**Outputs:** `cls_metrics.json`, summary `*_vs_k.png` plots, and per-`k` `combined_pr_curves.png` / `combined_precision_chr_curves.png` / `combined_precision_vchr_curves.png`. Retriever-only baselines are drawn as dotted lines, reranker-augmented systems as solid lines, sorted by AUC.
+**Outputs:** `cls_metrics.json` (per-combo metrics + a top-level `aggregates` block with the retriever baselines and per-reranker averages), summary `*_vs_k.png` plots, and per-`k` `combined_pr_curves.png` / `combined_precision_chr_curves.png` / `combined_precision_vchr_curves.png`. The retriever baseline is drawn as a bold black dashed line, reranker-augmented systems as solid tab10 lines with canonical model names, sorted by AUC. Running with `--transform pool_softmax` / `raw_sigmoid` produces the score-normalization ablation.
 
 #### Score Distribution Analysis
 
-KDE plots of positive vs. negative ground-truth scores per retriever and per retriever–reranker pair, with ROC-AUC, KS statistic and KDE overlap.
+KDE plots of positive vs. negative ground-truth scores per retriever and per retriever–reranker pair, plus the full probability-calibration table (`Table: distribution-metrics`): ROC-AUC, KS statistic, KDE overlap, **ECE** (15 equal-width bins), **NLL** (BCE), **Brier**, and — when joined with the classification metrics — the exact **P-CHR AUC** per reranker. It also reports the pooled Spearman correlations of ECE / NLL / Brier against exact P-CHR over all combos (paper caption ρ ≈ 0.22 / 0.27 / 0.50).
 
 ```bash
+# Run analyze_cls.py first so its cls_metrics.json exists for the P-CHR join.
 python src/analysis/analyze_distribution.py \
   --results-dir results/ \
   --plots-dir plots/distribution/ \
   --output plots/distribution/dist_metrics.json \
-  --calibration calibration_params.json
+  --calibration calibration_params.json \
+  --cls-metrics cls_metrics.json
 ```
 
-Arguments mirror `analyze_cls.py` (`--results-dir`, `--plots-dir`, `--output`, `--calibration`, `--calibration-method`, `--workers`). Outputs one KDE plot per unique retriever and per retriever–reranker pair, plus a metrics JSON.
+Arguments mirror `analyze_cls.py` (`--results-dir`, `--plots-dir`, `--output`, `--calibration`, `--calibration-method`, `--workers`), plus `--cls-metrics` — the `cls_metrics.json` written by `analyze_cls.py`; when given, each combo's exact P-CHR AUC is joined into the reranker table and the pooled ECE/NLL/Brier-vs-P-CHR Spearman correlations are printed. Outputs one KDE plot per unique retriever and per retriever–reranker pair (seaborn styling matching the camera-ready `fig:dist-kde`), a `rich` metrics table, and a metrics JSON.
 
 #### Latency Analysis
 
-Per-query retrieval / reranking / total latency (mean, std, p95) and reranking overhead, across all combinations.
+Per-query retrieval / reranking / total latency (mean, std, p95) and reranking overhead, across all combinations (`Table: latency`).
 
 ```bash
 python src/analysis/analyze_latency.py \
   --results-dir results/ \
   --plots-dir plots/latency/ \
-  --output plots/latency/latency_metrics.json
+  --output plots/latency/latency_metrics.json \
+  --cls-metrics cls_metrics.json \
+  --count-params
 ```
 
-Arguments: `--results-dir`, `--plots-dir`, `--output` (all required), `--workers`. Outputs `latency_breakdown.png`, `latency_per_reranker.png`, `latency_per_retriever.png` and a metrics JSON.
+Arguments: `--results-dir`, `--plots-dir`, `--output` (all required), `--workers`, plus two optional joins used to reproduce the paper table:
+- `--cls-metrics` — the `cls_metrics.json` from `analyze_cls.py`; adds the exact **P-CHR AUC** and **ΔRet** (reranker P-CHR minus the retriever's P-CHR) columns.
+- `--count-params` — populates the **Size** column by loading each reranker on CPU and summing parameters. Off by default so the run needs no model downloads (the column shows `—` when omitted).
+
+Outputs `latency_breakdown.png`, `latency_per_reranker.png`, `latency_per_retriever.png`, a `rich` table, and a metrics JSON.
