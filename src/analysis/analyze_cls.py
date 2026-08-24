@@ -84,7 +84,7 @@ def slice_datapoint_for_k(dp: dict[str, Any], k: int) -> dict[str, Any]:
     """Simulate top-k retrieval by slicing candidates and looking up reranker scores."""
     top_k_candidates = dp["retrieved_candidates"][:k]
     top_k_set = set(top_k_candidates)
-    score_map = {c: s for c, s in zip(dp["ranked_candidates"], dp["ranked_scores"])}
+    score_map = dict(zip(dp["ranked_candidates"], dp["ranked_scores"]))
     ranked_k = [
         (c, score_map[c])
         for c in dp["ranked_candidates"]
@@ -107,7 +107,7 @@ def _precompute_scores(
     data_points: list[dict[str, Any]],
     setup: str,
     normalize_scores: bool = False,
-    reranker_type: str = None,
+    reranker_type: str | None = None,
     calib_params: dict | None = None,
     calibration_method: str = "temperature",
     force_transform: str = "native",
@@ -213,7 +213,7 @@ def compute_metrics_across_thresholds(
     thresholds: list[float],
     setup: str,
     normalize_scores: bool = False,
-    reranker_type: str = None,
+    reranker_type: str | None = None,
     calib_params: dict | None = None,
     calibration_method: str = "temperature",
     force_transform: str = "native",
@@ -620,7 +620,7 @@ def plot_auc_vs_k(
         ("precision_vchr_auc", "P-VCHR-AUC", "pvchr_auc_vs_k.png"),
     ]:
         print(f"\nCreating {metric_name} vs k plot...")
-        fig, ax = plt.subplots(figsize=(14, 10))
+        _fig, ax = plt.subplots(figsize=(14, 10))
 
         curves = []
         plotted_retrievers = set()
@@ -694,7 +694,7 @@ def plot_auc_vs_k(
         ("Recall (at F1-optimal threshold)", "recall_vs_k.png", 1),
     ]:
         print(f"\nCreating {metric_name} vs k plot...")
-        fig, ax = plt.subplots(figsize=(14, 10))
+        _fig, ax = plt.subplots(figsize=(14, 10))
 
         curves = []
         plotted_retrievers = set()
@@ -826,7 +826,7 @@ def plot_per_k_curves(
         os.makedirs(k_dir, exist_ok=True)
 
         # PR curves
-        fig, ax = plt.subplots(figsize=(14, 10))
+        _fig, ax = plt.subplots(figsize=(14, 10))
         pr_curves = _build_pr_curves_for_k(all_processed, k, colors)
         pr_curves.sort(key=lambda x: x["auc"], reverse=True)
         _draw_curves(ax, pr_curves, "recalls", "precisions")
@@ -837,7 +837,7 @@ def plot_per_k_curves(
         plt.close()
 
         # CHR curves
-        fig, ax = plt.subplots(figsize=(14, 10))
+        _fig, ax = plt.subplots(figsize=(14, 10))
         chr_curves = _build_chr_curves_for_k(all_processed, k, colors)
         chr_curves.sort(key=lambda x: x["auc"], reverse=True)
         _draw_curves(ax, chr_curves, "chrs", "precisions")
@@ -855,7 +855,7 @@ def plot_per_k_curves(
         plt.close()
 
         # VCHR curves
-        fig, ax = plt.subplots(figsize=(14, 10))
+        _fig, ax = plt.subplots(figsize=(14, 10))
         vchr_curves = _build_vchr_curves_for_k(all_processed, k, colors)
         vchr_curves.sort(key=lambda x: x["auc"], reverse=True)
         _draw_curves(ax, vchr_curves, "vchrs", "precisions")

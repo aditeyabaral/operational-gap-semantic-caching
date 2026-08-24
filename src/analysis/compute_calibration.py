@@ -38,8 +38,8 @@ def _avg_reranker_pchr(cls_metrics_path: str) -> dict:
 
 def report_calib_params_table(
     params_path: str,
-    native_cls_metrics: str = None,
-    calibrated_cls_metrics: str = None,
+    native_cls_metrics: str | None = None,
+    calibrated_cls_metrics: str | None = None,
 ) -> None:
     """Print the post-hoc calibration parameter table (Table: calib-params) as a rich table.
 

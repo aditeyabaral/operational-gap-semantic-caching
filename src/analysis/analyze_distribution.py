@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import json
 import os
 from multiprocessing import Pool
@@ -42,7 +43,7 @@ def ece_score(scores, labels, n_bins: int = 15) -> float:
     edges = np.linspace(0.0, 1.0, n_bins + 1)
     n = len(scores)
     total = 0.0
-    for lo, hi in zip(edges[:-1], edges[1:]):
+    for lo, hi in itertools.pairwise(edges):
         mask = (
             (scores > lo) & (scores <= hi)
             if lo > 0
@@ -78,7 +79,7 @@ def brier_score(scores, labels) -> float:
 def extract_gt_scores_labels(
     results,
     reranker_type=None,
-    calib_params: dict = None,
+    calib_params: dict | None = None,
     calibration_method: str = "temperature",
 ):
     """Extract GT retriever scores and normalized reranker scores with labels."""
@@ -169,7 +170,7 @@ def plot_distributions(scores, labels, title, output_path):
     overlap_density = np.minimum(f_pos, f_neg)
     overlap = np.trapezoid(overlap_density, x_grid)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(x_grid, f_pos, color=_POS_COLOR, linewidth=2.6, label="Positive", alpha=0.9)
     ax.plot(x_grid, f_neg, color=_NEG_COLOR, linewidth=2.6, label="Negative", alpha=0.9)
     ax.fill_between(
@@ -188,7 +189,7 @@ def plot_distributions(scores, labels, title, output_path):
         transform=ax.transAxes,
         fontsize=15,
         verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.65),
+        bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.65},
     )
 
     ax.set_xlabel("Score", fontsize=18)

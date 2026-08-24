@@ -43,7 +43,7 @@ def count_model_params(sanitized_name: str) -> int | None:
         n = int(sum(p.numel() for p in model.parameters()))
         del model
         return n
-    except Exception as e:  # noqa: BLE001 - counting is best-effort
+    except Exception as e:
         print(f"  [size] could not load {hf_id}: {type(e).__name__}: {e}")
         return None
 
@@ -148,7 +148,7 @@ def _plot_vertical_bars(
     N = len(labels)
     x_pos = np.arange(N)
 
-    fig, ax = plt.subplots(figsize=(max(14, 0.5 * N + 3), 8))
+    _fig, ax = plt.subplots(figsize=(max(14, 0.5 * N + 3), 8))
     bottom = np.zeros(N)
     for values, color, legend_label in segments:
         ax.bar(

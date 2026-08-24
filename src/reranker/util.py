@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 
 def load_langcache_sentencepairs_splits(
-    subset_names: dict[str, str] = {"redis/langcache-sentencepairs-v3": ["all"]},
+    subset_names: dict[str, str] | None = None,
     combine_train_and_val: bool = False,
 ) -> tuple[Dataset, Dataset, Dataset]:
     """Load train, val and test datasets from the LangCache Sentence Pairs dataset.
@@ -26,11 +26,13 @@ def load_langcache_sentencepairs_splits(
         val_dataset: Validation dataset, or None if no validation split exists or combine_train_and_val=True.
         test_dataset: Test dataset, or None if no test split exists.
     """
+    if subset_names is None:
+        subset_names = {"redis/langcache-sentencepairs-v3": ["all"]}
     train_datasets, val_datasets, test_datasets = [], [], []
     columns_to_keep = ["sentence1", "sentence2", "label"]
 
-    for dataset_name, subset_names in subset_names.items():
-        for subset_name in subset_names:
+    for dataset_name, subsets in subset_names.items():
+        for subset_name in subsets:
             dataset = load_dataset(dataset_name, subset_name)
 
             # Handle column name variations (sentence1/sentence2 vs sentence_a/sentence_b)
@@ -74,7 +76,7 @@ def to_infonce(
     *,
     num_negatives: int = 3,
     seed: int = 42,
-    cache_dir: str = None,
+    cache_dir: str | None = None,
 ) -> Dataset:
     """Convert a sentence-pairs dataset (sentence1, sentence2, label in {0,1})
     into InfoNCE-ready examples with columns: anchor, positive, negative_1, negative_2, ..., negative_n.

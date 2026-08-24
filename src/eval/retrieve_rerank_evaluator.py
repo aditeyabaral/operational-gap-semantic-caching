@@ -1,4 +1,5 @@
 import time
+from typing import ClassVar
 
 import torch
 from pylate import rank
@@ -19,7 +20,9 @@ class RetrieveAndRerankEvaluator:
     #     "attn_implementation": "flash_attention_2",
     #     "dtype": _DTYPE,
     # }
-    _DEFAULT_MODEL_KWARGS = {"dtype": _DTYPE}  # HF picks sdpa automatically
+    _DEFAULT_MODEL_KWARGS: ClassVar[dict] = {
+        "dtype": _DTYPE
+    }  # HF picks sdpa automatically
 
     def __init__(
         self,
@@ -228,7 +231,7 @@ class RetrieveAndRerankEvaluator:
         Returns:
             Dict containing per-query results and aggregated timing metrics.
         """
-        results = list()
+        results = []
         zipped = list(zip(queries, ground_truths, labels))
         total_items = len(zipped)
         for query, ground_truth, label in tqdm(
@@ -247,7 +250,7 @@ class RetrieveAndRerankEvaluator:
             retrieval_end_time = time.perf_counter()
 
             # process the candidates and get the text and score
-            candidates, retrieval_scores = list(), list()
+            candidates, retrieval_scores = [], []
             for candidate in retrieved_candidates:
                 candidates.append(candidate["prompt"])
                 retrieval_scores.append(
@@ -281,9 +284,9 @@ class RetrieveAndRerankEvaluator:
             )
 
         # Compute aggregate timing metrics
-        retrieval_duration = sum(map(lambda x: x["retrieval_duration"], results))
-        reranking_duration = sum(map(lambda x: x["reranking_duration"], results))
-        total_duration = sum(map(lambda x: x["total_duration"], results))
+        retrieval_duration = sum(x["retrieval_duration"] for x in results)
+        reranking_duration = sum(x["reranking_duration"] for x in results)
+        total_duration = sum(x["total_duration"] for x in results)
 
         return {
             "retrieval_duration": retrieval_duration,

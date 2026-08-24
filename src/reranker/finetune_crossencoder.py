@@ -262,7 +262,7 @@ if __name__ == "__main__":
 
     # create evaluators for validation
     if val_dataset is not None:
-        val_evaluators_list = list()
+        val_evaluators_list = []
         val_evaluators_list.append(
             CrossEncoderClassificationEvaluator(
                 sentence_pairs=list(
@@ -292,7 +292,7 @@ if __name__ == "__main__":
 
     # create evaluators for test
     if test_dataset is not None:
-        test_evaluators_list = list()
+        test_evaluators_list = []
         test_evaluators_list.append(
             CrossEncoderClassificationEvaluator(
                 sentence_pairs=list(
@@ -451,11 +451,11 @@ if __name__ == "__main__":
     if val_evaluator is not None:
         val_scores = val_evaluator(model=model)
     else:
-        val_scores = dict()
+        val_scores = {}
     if test_evaluator is not None:
         test_scores = test_evaluator(model=model)
     else:
-        test_scores = dict()
+        test_scores = {}
     scores = {**val_scores, **test_scores}
     print(f"Final model scores: {scores}")
     with open(f"{save_dir}/final_metrics.json", "w") as f:

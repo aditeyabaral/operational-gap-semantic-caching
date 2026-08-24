@@ -32,3 +32,21 @@ dev = [
     "pre-commit>=4.4.0",
     "ruff>=0.14.5",
 ]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "B905",  # zip() without strict= is fine for our Python target
+    "RUF001", # allow math/Greek symbols (Δ, ρ, μ, ×) in strings
+    "RUF002",
+    "RUF003",
+]
