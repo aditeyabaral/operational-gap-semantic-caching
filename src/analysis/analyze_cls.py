@@ -841,7 +841,10 @@ def plot_per_k_curves(
         chr_curves.sort(key=lambda x: x["auc"], reverse=True)
         _draw_curves(ax, chr_curves, "chrs", "precisions")
         _style_curve_axes(
-            ax, "Cache Hit Ratio", f"Precision vs Cache Hit Ratio (k={k})", "upper right"
+            ax,
+            "Cache Hit Ratio",
+            f"Precision vs Cache Hit Ratio (k={k})",
+            "upper right",
         )
         plt.savefig(
             os.path.join(k_dir, "combined_precision_chr_curves.png"),
@@ -1197,6 +1200,45 @@ if __name__ == "__main__":
             _agg_title,
             sorted(reranker_avg.items(), key=lambda kv: -kv[1]["precision_chr_auc"]),
         )
+    )
+
+    # Full per-combo matrices (all 90 combinations): retrievers as rows, rerankers as
+    # columns, one table per metric — the paper's appendix Tables full-prauc / full-pchr /
+    # full-pvchr. Highest value per retriever (row) is bolded, as in the paper.
+    retriever_order = [
+        r
+        for r, _ in sorted(
+            retriever_baselines.items(), key=lambda kv: -kv[1]["precision_chr_auc"]
+        )
+    ]
+    reranker_order = sorted(
+        rerankers, key=lambda rr: -reranker_avg[rr]["precision_chr_auc"]
+    )
+
+    def _matrix_table(title: str, metric_key: str) -> Table:
+        t = Table(title=title, show_header=True, header_style="bold green")
+        t.add_column("Retriever", justify="left", min_width=20)
+        for rr in reranker_order:
+            t.add_column(canonical_reranker(rr), justify="right")
+        for ret in retriever_order:
+            present = [
+                full[ret][rr][metric_key] for rr in reranker_order if rr in full[ret]
+            ]
+            best = max(present) if present else None
+            cells = []
+            for rr in reranker_order:
+                if rr not in full[ret]:
+                    cells.append("—")
+                    continue
+                v = full[ret][rr][metric_key]
+                cells.append(f"[bold]{v:.3f}[/bold]" if v == best else f"{v:.3f}")
+            t.add_row(canonical_retriever(ret), *cells)
+        return t
+
+    console.print(_matrix_table("PR-AUC — all 90 combinations", "pr_auc"))
+    console.print(_matrix_table("P-CHR AUC — all 90 combinations", "precision_chr_auc"))
+    console.print(
+        _matrix_table("P-VCHR AUC — all 90 combinations", "precision_vchr_auc")
     )
 
     results_json = []

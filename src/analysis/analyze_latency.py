@@ -379,7 +379,9 @@ if __name__ == "__main__":
     size_by_reranker = {}
     if args.count_params:
         print("\nCounting model parameters (Size column)...")
-        for name in sorted({s["reranker_name"] for s in all_stats if s["reranker_name"]}):
+        for name in sorted(
+            {s["reranker_name"] for s in all_stats if s["reranker_name"]}
+        ):
             size_by_reranker[name] = count_model_params(name)
 
     console = Console(width=300)

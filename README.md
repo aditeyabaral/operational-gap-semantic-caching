@@ -1,6 +1,12 @@
 # Closing the Operational Gap in Semantic Caching
 
+[![Venue](https://img.shields.io/badge/EMNLP%202026-Industry%20Track-b31b1b)](https://arxiv.org/abs/2606.19719)
+[![arXiv](https://img.shields.io/badge/arXiv-2606.19719-b31b1b)](https://arxiv.org/abs/2606.19719)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
+
 Official code for the paper 📄 **"Closing the Operational Gap in Semantic Caching."** [[arXiv]](https://arxiv.org/abs/2606.19719)
+
+> 🎉 **Accepted at EMNLP 2026 (Industry Track).**
 
 🤗 **Models and datasets:** [`redis` on HuggingFace](https://huggingface.co/redis)
 
@@ -463,7 +469,7 @@ python src/analysis/compute_calibration.py --report --output calibration_params.
 
 #### PR-AUC and P-CHR-AUC (classification)
 
-Computes PR-AUC and **exact (grid-free)** Precision–CHR / Precision–VCHR AUC for every combination across `k = 1..K`, derives the operational-gap decomposition (`Δ_op`, `Δ_str`, `Δ_util`) and **ORR**, and renders the paper's curves. In one run over all combinations it prints, in addition to the per-combo tables, the **per-retriever baselines** table and the **per-reranker averages over retrievers** table (the two headline tables).
+Computes PR-AUC and **exact (grid-free)** Precision–CHR / Precision–VCHR AUC for every combination across `k = 1..K`, derives the operational-gap decomposition (`Δ_op`, `Δ_str`, `Δ_util`) and **ORR**, and renders the paper's curves. In one run over all combinations it prints, as `rich` tables: the per-combo metrics with `k` as rows (the K-sensitivity values), the **per-retriever baselines** and **per-reranker averages over retrievers** tables (the two headline tables), and the three full 90-combination matrices — **PR-AUC / P-CHR AUC / P-VCHR AUC** with retrievers as rows and rerankers as columns (highest per row bolded), reproducing the appendix full-result tables.
 
 ```bash
 python src/analysis/analyze_cls.py \
