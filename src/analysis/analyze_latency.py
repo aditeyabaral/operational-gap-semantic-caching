@@ -16,6 +16,37 @@ _OVERHEAD_COLOR = "#D65F0A"
 _ERRORBAR_COLOR = "#333333"
 
 
+def _fmt_size(n_params: Optional[int]) -> str:
+    """Human-readable parameter count, e.g. 109482240 -> '110M'."""
+    if n_params is None:
+        return "—"
+    if n_params >= 1e9:
+        return f"{n_params / 1e9:.1f}B"
+    return f"{round(n_params / 1e6)}M"
+
+
+def count_model_params(sanitized_name: str) -> Optional[int]:
+    """Total parameter count for a reranker, loaded from its weights (paper Size column).
+
+    ``sanitized_name`` is the filename form ('colbert-ir--colbertv2.0'); the HF id is recovered by
+    turning '--' back into '/'. The model is loaded on CPU purely to count parameters. Returns None
+    if it cannot be loaded (e.g. offline), so the Size column degrades to '—' rather than crashing.
+    """
+    if not sanitized_name:
+        return None
+    hf_id = sanitized_name.replace("--", "/", 1)
+    try:
+        from transformers import AutoModel
+
+        model = AutoModel.from_pretrained(hf_id, trust_remote_code=True)
+        n = int(sum(p.numel() for p in model.parameters()))
+        del model
+        return n
+    except Exception as e:  # noqa: BLE001 - counting is best-effort
+        print(f"  [size] could not load {hf_id}: {type(e).__name__}: {e}")
+        return None
+
+
 def extract_durations(
     results: List[Dict[str, Any]],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -280,6 +311,12 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--count-params",
+        action="store_true",
+        help="Populate the Size column by loading each reranker on CPU and counting parameters "
+        "(paper Table: latency). Off by default so the run needs no model downloads.",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=-1,
@@ -338,6 +375,13 @@ if __name__ == "__main__":
 
     all_stats_sorted = sorted(all_stats, key=lambda x: x["mean_total"], reverse=True)
 
+    # Optional: parameter count per unique reranker (paper Size column), loaded from weights once.
+    size_by_reranker = {}
+    if args.count_params:
+        print("\nCounting model parameters (Size column)...")
+        for name in sorted({s["reranker_name"] for s in all_stats if s["reranker_name"]}):
+            size_by_reranker[name] = count_model_params(name)
+
     console = Console(width=300)
     table = Table(
         title="Latency Statistics per Model Combination",
@@ -346,6 +390,7 @@ if __name__ == "__main__":
     )
     table.add_column("Setup", style="dim", no_wrap=True)
     table.add_column("N", justify="right", min_width=8)
+    table.add_column("Size", justify="right", min_width=6)
     table.add_column("P-CHR AUC", justify="right", min_width=9)
     table.add_column("ΔRet", justify="right", min_width=7)
     table.add_column("Avg Reranking (ms)", justify="right", min_width=20)
@@ -366,9 +411,11 @@ if __name__ == "__main__":
         s["delta_ret"] = (
             (pchr - retr_pchr) if (pchr is not None and retr_pchr is not None) else None
         )
+        s["n_params"] = size_by_reranker.get(s.get("reranker_name"))
         table.add_row(
             s["label"],
             str(s["n"]),
+            _fmt_size(s["n_params"]),
             "—" if pchr is None else f"{pchr:.3f}",
             "—" if s["delta_ret"] is None else f"{s['delta_ret']:+.3f}",
             f"{s['mean_reranking']:.4f} ± {s['std_reranking']:.4f}",
@@ -481,6 +528,7 @@ if __name__ == "__main__":
                 "delta_ret": nan_to_none(s["delta_ret"])
                 if s.get("delta_ret") is not None
                 else None,
+                "n_params": s.get("n_params"),
             }
             for s in all_stats_sorted
         ],

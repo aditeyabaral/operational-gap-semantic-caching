@@ -4,6 +4,7 @@ import json
 import numpy as np
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
+import seaborn as sns
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
 from scipy.stats import ks_2samp, gaussian_kde, spearmanr
@@ -11,6 +12,7 @@ from multiprocessing import Pool
 from rich.console import Console
 from rich.table import Table
 
+from src.analysis.analyze_cls import canonical_reranker, canonical_retriever
 from src.analysis.util import (
     extract_models_from_filename,
     get_calibration_params,
@@ -18,6 +20,10 @@ from src.analysis.util import (
     nan_to_none,
     normalize_reranker_scores,
 )
+
+# Camera-ready KDE styling (matches the paper's Score-Distribution figure).
+sns.set_theme(style="darkgrid", context="talk", font_scale=1.0)
+_POS_COLOR, _NEG_COLOR, _OVERLAP_COLOR = "#2ca02c", "#d62728", "#9467bd"
 
 # Probability-calibration metrics (Appendix: Score Distribution Analysis). Computed on the
 # ground-truth candidate's normalized score s(q,c*) against the binary label, exactly as the
@@ -163,24 +169,10 @@ def plot_distributions(scores, labels, title, output_path):
     overlap = np.trapezoid(overlap_density, x_grid)
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(
-        x_grid,
-        f_pos,
-        color="green",
-        linewidth=2,
-        label=f"Positive (n={len(pos_scores)})",
-        alpha=0.8,
-    )
-    ax.plot(
-        x_grid,
-        f_neg,
-        color="red",
-        linewidth=2,
-        label=f"Negative (n={len(neg_scores)})",
-        alpha=0.8,
-    )
+    ax.plot(x_grid, f_pos, color=_POS_COLOR, linewidth=2.6, label="Positive", alpha=0.9)
+    ax.plot(x_grid, f_neg, color=_NEG_COLOR, linewidth=2.6, label="Negative", alpha=0.9)
     ax.fill_between(
-        x_grid, overlap_density, alpha=0.3, color="purple", label="Overlap Region"
+        x_grid, overlap_density, alpha=0.35, color=_OVERLAP_COLOR, label="Overlap"
     )
 
     stats_text = (
@@ -193,17 +185,17 @@ def plot_distributions(scores, labels, title, output_path):
         0.98,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=15,
         verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.65),
     )
 
-    ax.set_xlabel("Score", fontsize=12)
-    ax.set_ylabel("Density", fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.set_xlabel("Score", fontsize=18)
+    ax.set_ylabel("Density", fontsize=18)
+    ax.set_title(title, fontsize=18, fontweight="bold", pad=10)
+    ax.tick_params(labelsize=15)
     ax.set_xlim(0.0, 1.0)
-    ax.legend(loc="upper right", fontsize=10)
-    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right", fontsize=15, frameon=False)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -423,7 +415,7 @@ if __name__ == "__main__":
             plot_distributions(
                 retriever_scores,
                 labels,
-                title=f"{retriever_name} Retriever Score Distribution",
+                title=f"{canonical_retriever(retriever_name.split('--')[-1])} (retriever)",
                 output_path=os.path.join(
                     args.plots_dir, f"{retriever_name}_retriever_kde.png"
                 ),
@@ -467,7 +459,7 @@ if __name__ == "__main__":
                 plot_distributions(
                     reranker_scores,
                     labels,
-                    title=f"{retriever_name} + {reranker_name} Reranker Score Distribution",
+                    title=canonical_reranker(reranker_name.split("--")[-1]),
                     output_path=os.path.join(
                         args.plots_dir,
                         f"{retriever_name}__{reranker_name}_reranker_kde.png",

@@ -21,6 +21,7 @@ dependencies = [
     "pylate>=1.4.0",
     "redisvl>=0.15.0",
     "rich>=14.3.3",
+    "seaborn>=0.13.2",
     "torch>=2.9.0",
     "wandb>=0.25.1",
     "xformers>=0.0.33.post1",

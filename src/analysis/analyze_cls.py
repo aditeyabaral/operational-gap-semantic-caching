@@ -6,6 +6,7 @@ import numpy as np
 from tqdm.auto import tqdm
 from typing import List, Dict, Tuple, Any, Optional
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.metrics import auc, average_precision_score, precision_recall_curve
 from multiprocessing import Pool
 from collections import defaultdict
@@ -19,6 +20,44 @@ from src.analysis.util import (
     normalize_scores_softmax,
     parse_filename_params,
 )
+
+# Camera-ready figure styling (matches the paper's Performance-Curves figure).
+sns.set_theme(style="darkgrid", context="talk", font_scale=1.0)
+_RETRIEVER_COLOR = "#111111"  # bold black dashed reference line
+
+# Canonical model names for figure legends, keyed by the final path component of the model id
+# (what the combo label carries). Anything not listed falls through unchanged.
+RERANKER_CANONICAL = {
+    "colbertv2.0": "ColBERTv2.0",
+    "Reason-ModernColBERT": "Reason-ModernColBERT",
+    "ColBERT-Zero": "ColBERT-Zero",
+    "GTE-ModernColBERT-v1": "GTE-ModernColBERT-v1",
+    "gte-reranker-modernbert-base": "GTE-Reranker-ModernBERT-base",
+    "ms-marco-MiniLM-L12-v2": "ms-marco-MiniLM-L12-v2",
+    "langcache-reranker-v1-softmnrl-triplet": "LangCache-Reranker-v1-MNRL",
+    "langcache-reranker-v2-softmnrl-triplet": "LangCache-Reranker-v2-MNRL",
+    "langcache-reranker-v1": "LangCache-Reranker-v1-BCE",
+    "langcache-reranker-v2-modernbert-bce-eps0.5": "LangCache-Reranker-v2-BCE",
+}
+RETRIEVER_CANONICAL = {
+    "langcache-embed-v3-small": "LangCache-Embed-v3",
+    "langcache-embed-v2": "LangCache-Embed-v2",
+    "langcache-embed-v1": "LangCache-Embed-v1",
+    "bge-base-en-v1.5": "BGE-base-en-v1.5",
+    "gte-modernbert-base": "GTE-ModernBERT-base",
+    "jina-embeddings-v2-base-en": "Jina-Embeddings-v2-base-en",
+    "nomic-embed-text-v1.5": "Nomic-embed-text-v1.5",
+    "e5-base-v2": "E5-base-v2",
+    "snowflake-arctic-embed-m-v2.0": "Snowflake-Arctic-Embed-m-v2.0",
+}
+
+
+def canonical_reranker(name: str) -> str:
+    return RERANKER_CANONICAL.get(name, name)
+
+
+def canonical_retriever(name: str) -> str:
+    return RETRIEVER_CANONICAL.get(name, name)
 
 
 def parse_eval_filename(filename):
@@ -429,6 +468,7 @@ def _build_pr_curves_for_k(
         retriever_label = label.split("+")[0] if "+" in label else label
         kr = result["k_results"][k]
 
+        reranker_label = label.split("+", 1)[1] if "+" in label else label
         if retriever_label not in plotted_retrievers:
             precs, recs, _ = precision_recall_curve(
                 kr["retriever_y_true"], kr["retriever_y_scores"]
@@ -439,11 +479,12 @@ def _build_pr_curves_for_k(
                     "auc": ret_auc,
                     "recalls": recs,
                     "precisions": precs,
-                    "label": f"{retriever_label} (AUC={ret_auc:.3f})",
-                    "linewidth": 1.5,
-                    "linestyle": ":",
-                    "alpha": 0.7,
-                    "color": colors[idx * 2],
+                    "label": f"{canonical_retriever(retriever_label)} (AUC={ret_auc:.3f})",
+                    "linewidth": 3.2,
+                    "linestyle": (0, (5, 2)),
+                    "alpha": 0.95,
+                    "color": _RETRIEVER_COLOR,
+                    "zorder": 5,
                 }
             )
             plotted_retrievers.add(retriever_label)
@@ -457,11 +498,11 @@ def _build_pr_curves_for_k(
                 "auc": rer_auc,
                 "recalls": recs_rer,
                 "precisions": precs_rer,
-                "label": f"{label} (AUC={rer_auc:.3f})",
-                "linewidth": 2,
+                "label": f"{canonical_reranker(reranker_label)} (AUC={rer_auc:.3f})",
+                "linewidth": 2.4,
                 "linestyle": "-",
-                "alpha": 1.0,
-                "color": colors[idx * 2 + 1],
+                "alpha": 0.9,
+                "color": colors[idx % len(colors)],
             }
         )
     return pr_curves
@@ -477,6 +518,7 @@ def _build_chr_curves_for_k(
         retriever_label = label.split("+")[0] if "+" in label else label
         kr = result["k_results"][k]
 
+        reranker_label = label.split("+", 1)[1] if "+" in label else label
         if retriever_label not in plotted_retrievers:
             # Exact (grid-free) operating points; already ascending in CHR.
             ret_chrs, ret_precs = kr["retriever_auc"]["chr_curve"]
@@ -486,11 +528,12 @@ def _build_chr_curves_for_k(
                     "auc": ret_chr_auc,
                     "chrs": ret_chrs,
                     "precisions": ret_precs,
-                    "label": f"{retriever_label} (AUC={ret_chr_auc:.3f})",
-                    "linewidth": 1.5,
-                    "linestyle": ":",
-                    "alpha": 0.7,
-                    "color": colors[idx * 2],
+                    "label": f"{canonical_retriever(retriever_label)} (AUC={ret_chr_auc:.3f})",
+                    "linewidth": 3.2,
+                    "linestyle": (0, (5, 2)),
+                    "alpha": 0.95,
+                    "color": _RETRIEVER_COLOR,
+                    "zorder": 5,
                 }
             )
             plotted_retrievers.add(retriever_label)
@@ -502,11 +545,11 @@ def _build_chr_curves_for_k(
                 "auc": rer_chr_auc,
                 "chrs": rer_chrs,
                 "precisions": rer_precs,
-                "label": f"{label} (AUC={rer_chr_auc:.3f})",
-                "linewidth": 2,
+                "label": f"{canonical_reranker(reranker_label)} (AUC={rer_chr_auc:.3f})",
+                "linewidth": 2.4,
                 "linestyle": "-",
-                "alpha": 1.0,
-                "color": colors[idx * 2 + 1],
+                "alpha": 0.9,
+                "color": colors[idx % len(colors)],
             }
         )
     return chr_curves
@@ -522,6 +565,7 @@ def _build_vchr_curves_for_k(
         retriever_label = label.split("+")[0] if "+" in label else label
         kr = result["k_results"][k]
 
+        reranker_label = label.split("+", 1)[1] if "+" in label else label
         if retriever_label not in plotted_retrievers:
             # Exact (grid-free) operating points; already ascending in VCHR.
             ret_vchrs, ret_precs = kr["retriever_auc"]["vchr_curve"]
@@ -531,11 +575,12 @@ def _build_vchr_curves_for_k(
                     "auc": ret_vchr_auc,
                     "vchrs": ret_vchrs,
                     "precisions": ret_precs,
-                    "label": f"{retriever_label} (AUC={ret_vchr_auc:.3f})",
-                    "linewidth": 1.5,
-                    "linestyle": ":",
-                    "alpha": 0.7,
-                    "color": colors[idx * 2],
+                    "label": f"{canonical_retriever(retriever_label)} (AUC={ret_vchr_auc:.3f})",
+                    "linewidth": 3.2,
+                    "linestyle": (0, (5, 2)),
+                    "alpha": 0.95,
+                    "color": _RETRIEVER_COLOR,
+                    "zorder": 5,
                 }
             )
             plotted_retrievers.add(retriever_label)
@@ -547,11 +592,11 @@ def _build_vchr_curves_for_k(
                 "auc": rer_vchr_auc,
                 "vchrs": rer_vchrs,
                 "precisions": rer_precs,
-                "label": f"{label} (AUC={rer_vchr_auc:.3f})",
-                "linewidth": 2,
+                "label": f"{canonical_reranker(reranker_label)} (AUC={rer_vchr_auc:.3f})",
+                "linewidth": 2.4,
                 "linestyle": "-",
-                "alpha": 1.0,
-                "color": colors[idx * 2 + 1],
+                "alpha": 0.9,
+                "color": colors[idx % len(colors)],
             }
         )
     return vchr_curves
@@ -725,6 +770,42 @@ def plot_auc_vs_k(
         plt.close()
 
 
+def _draw_curves(ax, curves, xkey, ykey):
+    """Draw camera-ready styled curves (retriever dashed-black on top, rerankers solid tab10)."""
+    for c in curves:
+        ax.plot(
+            c[xkey],
+            c[ykey],
+            label=c["label"],
+            linewidth=c["linewidth"],
+            linestyle=c["linestyle"],
+            alpha=c["alpha"],
+            color=c["color"],
+            solid_capstyle="round",
+            zorder=c.get("zorder", 2),
+        )
+
+
+def _style_curve_axes(ax, xlabel, title, legend_loc):
+    """Apply the paper's Performance-Curves figure styling to a precision-vs-x axis."""
+    ax.set_xlabel(xlabel, fontsize=17)
+    ax.set_ylabel("Precision", fontsize=17)
+    ax.set_title(title, fontsize=19, fontweight="bold", pad=12)
+    ax.tick_params(labelsize=14)
+    ax.legend(
+        fontsize=14,
+        loc=legend_loc,
+        frameon=False,
+        borderpad=0.6,
+        labelspacing=0.35,
+        handlelength=1.8,
+    )
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1.02])
+    ax.margins(0)
+    plt.tight_layout()
+
+
 def plot_per_k_curves(
     all_processed: List[Dict[str, Any]],
     output_dir: str,
@@ -733,8 +814,8 @@ def plot_per_k_curves(
         return
     K = all_processed[0]["K"]
     k_values = sorted(all_processed[0]["k_results"].keys())
-    num_colors = max(len(all_processed) * 2, 16)
-    colors = plt.cm.tab20(np.linspace(0, 1, num_colors))
+    # One distinct hue per reranker (camera-ready palette); retriever is a bold black reference.
+    colors = sns.color_palette("tab10", n_colors=max(len(all_processed), 10))
 
     print(
         f"\nGenerating per-k threshold-sweep plots (k=1..{K}) → {output_dir}/k{{01..{K:02d}}}/"
@@ -747,24 +828,8 @@ def plot_per_k_curves(
         fig, ax = plt.subplots(figsize=(14, 10))
         pr_curves = _build_pr_curves_for_k(all_processed, k, colors)
         pr_curves.sort(key=lambda x: x["auc"], reverse=True)
-        for curve in pr_curves:
-            ax.plot(
-                curve["recalls"],
-                curve["precisions"],
-                label=curve["label"],
-                linewidth=curve["linewidth"],
-                linestyle=curve["linestyle"],
-                alpha=curve["alpha"],
-                color=curve["color"],
-            )
-        ax.set_xlabel("Recall", fontsize=13)
-        ax.set_ylabel("Precision", fontsize=13)
-        ax.set_title(f"Precision vs Recall (k={k})", fontsize=14, fontweight="bold")
-        ax.legend(fontsize=10, loc="best")
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.05])
-        plt.tight_layout()
+        _draw_curves(ax, pr_curves, "recalls", "precisions")
+        _style_curve_axes(ax, "Recall", f"Precision vs Recall (k={k})", "best")
         plt.savefig(
             os.path.join(k_dir, "combined_pr_curves.png"), dpi=300, bbox_inches="tight"
         )
@@ -774,26 +839,10 @@ def plot_per_k_curves(
         fig, ax = plt.subplots(figsize=(14, 10))
         chr_curves = _build_chr_curves_for_k(all_processed, k, colors)
         chr_curves.sort(key=lambda x: x["auc"], reverse=True)
-        for curve in chr_curves:
-            ax.plot(
-                curve["chrs"],
-                curve["precisions"],
-                label=curve["label"],
-                linewidth=curve["linewidth"],
-                linestyle=curve["linestyle"],
-                alpha=curve["alpha"],
-                color=curve["color"],
-            )
-        ax.set_xlabel("Cache Hit Ratio", fontsize=13)
-        ax.set_ylabel("Precision", fontsize=13)
-        ax.set_title(
-            f"Precision vs Cache Hit Ratio (k={k})", fontsize=14, fontweight="bold"
+        _draw_curves(ax, chr_curves, "chrs", "precisions")
+        _style_curve_axes(
+            ax, "Cache Hit Ratio", f"Precision vs Cache Hit Ratio (k={k})", "upper right"
         )
-        ax.legend(fontsize=10, loc="lower right")
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.05])
-        plt.tight_layout()
         plt.savefig(
             os.path.join(k_dir, "combined_precision_chr_curves.png"),
             dpi=300,
@@ -805,28 +854,13 @@ def plot_per_k_curves(
         fig, ax = plt.subplots(figsize=(14, 10))
         vchr_curves = _build_vchr_curves_for_k(all_processed, k, colors)
         vchr_curves.sort(key=lambda x: x["auc"], reverse=True)
-        for curve in vchr_curves:
-            ax.plot(
-                curve["vchrs"],
-                curve["precisions"],
-                label=curve["label"],
-                linewidth=curve["linewidth"],
-                linestyle=curve["linestyle"],
-                alpha=curve["alpha"],
-                color=curve["color"],
-            )
-        ax.set_xlabel("Valid Cache Hit Ratio", fontsize=13)
-        ax.set_ylabel("Precision", fontsize=13)
-        ax.set_title(
+        _draw_curves(ax, vchr_curves, "vchrs", "precisions")
+        _style_curve_axes(
+            ax,
+            "Valid Cache Hit Ratio",
             f"Precision vs Valid Cache Hit Ratio (k={k})",
-            fontsize=14,
-            fontweight="bold",
+            "upper right",
         )
-        ax.legend(fontsize=10, loc="lower right")
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.05])
-        plt.tight_layout()
         plt.savefig(
             os.path.join(k_dir, "combined_precision_vchr_curves.png"),
             dpi=300,
