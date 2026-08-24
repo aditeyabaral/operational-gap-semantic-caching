@@ -1,13 +1,15 @@
-import torch
 import time
+from typing import ClassVar
+
+import torch
+from pylate import rank
+from pylate.models import ColBERT
 from redis import Redis
-from redisvl.utils.vectorize import HFTextVectorizer
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.utils.rerank import HFCrossEncoderReranker
+from redisvl.utils.vectorize import HFTextVectorizer
 from tqdm.auto import tqdm
-from pylate.models import ColBERT
-from pylate import rank
 
 
 class RetrieveAndRerankEvaluator:
@@ -18,7 +20,9 @@ class RetrieveAndRerankEvaluator:
     #     "attn_implementation": "flash_attention_2",
     #     "dtype": _DTYPE,
     # }
-    _DEFAULT_MODEL_KWARGS = {"dtype": _DTYPE}  # HF picks sdpa automatically
+    _DEFAULT_MODEL_KWARGS: ClassVar[dict] = {
+        "dtype": _DTYPE
+    }  # HF picks sdpa automatically
 
     def __init__(
         self,
@@ -31,8 +35,7 @@ class RetrieveAndRerankEvaluator:
         device: str = "cuda",
         flush_cache: bool = False,
     ):
-        """
-        Initialize the evaluator.
+        """Initialize the evaluator.
 
         Args:
             redis_host: Hostname of the Redis server.
@@ -106,8 +109,7 @@ class RetrieveAndRerankEvaluator:
         self.redis_port = redis_port
 
     def populate_cache(self, sentences: list[str]):
-        """
-        Populate the semantic cache with a list of sentences.
+        """Populate the semantic cache with a list of sentences.
 
         Args:
             sentences: Sentences to store in the cache.
@@ -123,8 +125,7 @@ class RetrieveAndRerankEvaluator:
         return self.semantic_cache.index.info()["num_docs"]
 
     def retrieve(self, query: str, num_results: int) -> list[dict]:
-        """
-        Retrieve candidate matches from the semantic cache.
+        """Retrieve candidate matches from the semantic cache.
 
         Args:
             query: Query string to search for.
@@ -141,8 +142,7 @@ class RetrieveAndRerankEvaluator:
     def rerank_crossencoder(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using a cross-encoder model.
+        """Re-rank candidates using a cross-encoder model.
 
         Args:
             query: Query string.
@@ -160,8 +160,7 @@ class RetrieveAndRerankEvaluator:
     def rerank_colbert(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using a ColBERT model via pylate.
+        """Re-rank candidates using a ColBERT model via pylate.
 
         Args:
             query: Query string.
@@ -192,8 +191,7 @@ class RetrieveAndRerankEvaluator:
     def rerank(
         self, query: str, candidates: list[str]
     ) -> tuple[list[str], list[float]]:
-        """
-        Re-rank candidates using the configured re-ranker.
+        """Re-rank candidates using the configured re-ranker.
 
         Dispatches to rerank_crossencoder or rerank_colbert based on reranker_type.
 
@@ -223,8 +221,7 @@ class RetrieveAndRerankEvaluator:
     def evaluate(
         self, queries: list[str], ground_truths: list[str], labels: list[int]
     ) -> dict:
-        """
-        Run the full retrieve-and-rerank pipeline over a set of queries and return evaluation results.
+        """Run the full retrieve-and-rerank pipeline over a set of queries and return evaluation results.
 
         Args:
             queries: List of query strings to evaluate.
@@ -234,7 +231,7 @@ class RetrieveAndRerankEvaluator:
         Returns:
             Dict containing per-query results and aggregated timing metrics.
         """
-        results = list()
+        results = []
         zipped = list(zip(queries, ground_truths, labels))
         total_items = len(zipped)
         for query, ground_truth, label in tqdm(
@@ -253,7 +250,7 @@ class RetrieveAndRerankEvaluator:
             retrieval_end_time = time.perf_counter()
 
             # process the candidates and get the text and score
-            candidates, retrieval_scores = list(), list()
+            candidates, retrieval_scores = [], []
             for candidate in retrieved_candidates:
                 candidates.append(candidate["prompt"])
                 retrieval_scores.append(
@@ -287,9 +284,9 @@ class RetrieveAndRerankEvaluator:
             )
 
         # Compute aggregate timing metrics
-        retrieval_duration = sum(map(lambda x: x["retrieval_duration"], results))
-        reranking_duration = sum(map(lambda x: x["reranking_duration"], results))
-        total_duration = sum(map(lambda x: x["total_duration"], results))
+        retrieval_duration = sum(x["retrieval_duration"] for x in results)
+        reranking_duration = sum(x["reranking_duration"] for x in results)
+        total_duration = sum(x["total_duration"] for x in results)
 
         return {
             "retrieval_duration": retrieval_duration,

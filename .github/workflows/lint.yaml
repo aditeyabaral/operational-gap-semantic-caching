@@ -18,7 +18,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Ruff
-        run: pip install -U ruff
+        run: pip install ruff==0.15.19
 
       - name: Show ruff config
         run: ruff check --show-settings

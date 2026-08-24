@@ -21,6 +21,7 @@ dependencies = [
     "pylate>=1.4.0",
     "redisvl>=0.15.0",
     "rich>=14.3.3",
+    "seaborn>=0.13.2",
     "torch>=2.9.0",
     "wandb>=0.25.1",
     "xformers>=0.0.33.post1",
@@ -30,4 +31,22 @@ dependencies = [
 dev = [
     "pre-commit>=4.4.0",
     "ruff>=0.14.5",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "B905",  # zip() without strict= is fine for our Python target
+    "RUF001", # allow math/Greek symbols (Δ, ρ, μ, ×) in strings
+    "RUF002",
+    "RUF003",
 ]

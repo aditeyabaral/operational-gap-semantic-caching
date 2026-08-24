@@ -1,8 +1,8 @@
-from sentence_transformers.evaluation import SentenceEvaluator
-import torch
 import numpy as np
+import torch
 from scipy.stats import gaussian_kde
-from sklearn.metrics import precision_recall_curve, auc
+from sentence_transformers.evaluation import SentenceEvaluator
+from sklearn.metrics import auc, precision_recall_curve
 from tqdm import tqdm
 
 
@@ -10,8 +10,7 @@ class CacheEvaluator(SentenceEvaluator):
     def __init__(
         self, sentence_pairs, labels, batch_size=32, name="cache", device="cuda"
     ):
-        """
-        Evaluator that computes the following metrics:
+        """Evaluator that computes the following metrics:
         - Precision-Recall AUC
         - Precision-Cache Hit Ratio AUC
         - Precision-Valid Cache Hit Ratio AUC

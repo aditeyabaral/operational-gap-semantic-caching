@@ -1,13 +1,14 @@
 import argparse
-import os
 import json
-import numpy as np
-from tqdm.auto import tqdm
-from typing import List, Dict, Tuple, Any, Optional
-import matplotlib.pyplot as plt
+import os
 from multiprocessing import Pool
+from typing import Any
+
+import matplotlib.pyplot as plt
+import numpy as np
 from rich.console import Console
 from rich.table import Table
+from tqdm.auto import tqdm
 
 from src.analysis.util import extract_models_from_filename, nan_to_none
 
@@ -16,9 +17,40 @@ _OVERHEAD_COLOR = "#D65F0A"
 _ERRORBAR_COLOR = "#333333"
 
 
+def _fmt_size(n_params: int | None) -> str:
+    """Human-readable parameter count, e.g. 109482240 -> '110M'."""
+    if n_params is None:
+        return "—"
+    if n_params >= 1e9:
+        return f"{n_params / 1e9:.1f}B"
+    return f"{round(n_params / 1e6)}M"
+
+
+def count_model_params(sanitized_name: str) -> int | None:
+    """Total parameter count for a reranker, loaded from its weights (paper Size column).
+
+    ``sanitized_name`` is the filename form ('colbert-ir--colbertv2.0'); the HF id is recovered by
+    turning '--' back into '/'. The model is loaded on CPU purely to count parameters. Returns None
+    if it cannot be loaded (e.g. offline), so the Size column degrades to '—' rather than crashing.
+    """
+    if not sanitized_name:
+        return None
+    hf_id = sanitized_name.replace("--", "/", 1)
+    try:
+        from transformers import AutoModel
+
+        model = AutoModel.from_pretrained(hf_id, trust_remote_code=True)
+        n = int(sum(p.numel() for p in model.parameters()))
+        del model
+        return n
+    except Exception as e:
+        print(f"  [size] could not load {hf_id}: {type(e).__name__}: {e}")
+        return None
+
+
 def extract_durations(
-    results: List[Dict[str, Any]],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    results: list[dict[str, Any]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ret, rer, tot = [], [], []
     for item in results:
         r = item.get("retrieval_duration")
@@ -46,7 +78,7 @@ def compute_latency_stats(
     retrieval_ms: np.ndarray,
     reranking_ms: np.ndarray,
     total_ms: np.ndarray,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     n = len(total_ms)
     ddof = 1 if n > 1 else 0
     return {
@@ -71,14 +103,14 @@ def _truncate_label(label: str, maxlen: int = 75) -> str:
 
 
 def process_file(
-    args_tuple: Tuple[str, str],
-) -> Optional[Dict[str, Any]]:
+    args_tuple: tuple[str, str],
+) -> dict[str, Any] | None:
     filename, results_dir = args_tuple
     path = os.path.join(results_dir, filename)
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error loading {path}: {e}")
         return None
 
@@ -108,15 +140,15 @@ def process_file(
 
 
 def _plot_vertical_bars(
-    segments: List[Tuple[np.ndarray, str, str]],
-    labels: List[str],
+    segments: list[tuple[np.ndarray, str, str]],
+    labels: list[str],
     title: str,
     output_path: str,
 ) -> None:
     N = len(labels)
     x_pos = np.arange(N)
 
-    fig, ax = plt.subplots(figsize=(max(14, 0.5 * N + 3), 8))
+    _fig, ax = plt.subplots(figsize=(max(14, 0.5 * N + 3), 8))
     bottom = np.zeros(N)
     for values, color, legend_label in segments:
         ax.bar(
@@ -142,7 +174,7 @@ def _plot_vertical_bars(
 
 
 def plot_latency_bars(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -164,7 +196,7 @@ def plot_latency_bars(
 
 
 def plot_latency_per_reranker(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -173,7 +205,7 @@ def plot_latency_per_reranker(
 
     from collections import defaultdict
 
-    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in stats:
         key = s["reranker_name"].split("--")[-1] if s["reranker_name"] else "unknown"
         groups[key].append(s)
@@ -206,7 +238,7 @@ def plot_latency_per_reranker(
 
 
 def plot_latency_per_retriever(
-    stats: List[Dict[str, Any]],
+    stats: list[dict[str, Any]],
     output_path: str,
 ) -> None:
     if not stats:
@@ -215,7 +247,7 @@ def plot_latency_per_retriever(
 
     from collections import defaultdict
 
-    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in stats:
         key = s["retriever_name"].split("--")[-1] if s["retriever_name"] else "unknown"
         groups[key].append(s)
@@ -270,12 +302,44 @@ if __name__ == "__main__":
         help="Path to save JSON latency summary",
     )
     parser.add_argument(
+        "--cls-metrics",
+        type=str,
+        default=None,
+        help=(
+            "Path to the cls_metrics.json produced by analyze_cls.py. When given, exact P-CHR AUC "
+            "and ΔRet (reranker P-CHR minus the retriever's P-CHR) are joined into the per-combo "
+            "latency table (Table: latency)."
+        ),
+    )
+    parser.add_argument(
+        "--count-params",
+        action="store_true",
+        help="Populate the Size column by loading each reranker on CPU and counting parameters "
+        "(paper Table: latency). Off by default so the run needs no model downloads.",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=-1,
         help="Number of parallel worker processes (-1 uses all available CPUs, default: -1)",
     )
     args = parser.parse_args()
+
+    def _combo_key(retriever_name, reranker_name):
+        if retriever_name is None or reranker_name is None:
+            return None
+        return f"{retriever_name.split('--')[-1]}+{reranker_name.split('--')[-1]}"
+
+    # Optional join: exact P-CHR AUC (reranker) and the retriever baseline P-CHR per combo.
+    pchr_by_combo, retr_pchr_by_combo = {}, {}
+    if args.cls_metrics:
+        with open(args.cls_metrics) as f:
+            cls_data = json.load(f)
+        for r in cls_data.get("results", []):
+            kr = r["k_results"]
+            k_max = max(kr, key=lambda k: int(k))
+            pchr_by_combo[r["label"]] = kr[k_max]["reranker_precision_chr_auc"]
+            retr_pchr_by_combo[r["label"]] = kr[k_max]["retriever_precision_chr_auc"]
 
     num_workers = (
         int(int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)) * 0.75)
@@ -312,6 +376,15 @@ if __name__ == "__main__":
 
     all_stats_sorted = sorted(all_stats, key=lambda x: x["mean_total"], reverse=True)
 
+    # Optional: parameter count per unique reranker (paper Size column), loaded from weights once.
+    size_by_reranker = {}
+    if args.count_params:
+        print("\nCounting model parameters (Size column)...")
+        for name in sorted(
+            {s["reranker_name"] for s in all_stats if s["reranker_name"]}
+        ):
+            size_by_reranker[name] = count_model_params(name)
+
     console = Console(width=300)
     table = Table(
         title="Latency Statistics per Model Combination",
@@ -320,8 +393,11 @@ if __name__ == "__main__":
     )
     table.add_column("Setup", style="dim", no_wrap=True)
     table.add_column("N", justify="right", min_width=8)
-    table.add_column("Avg Retrieval (ms)", justify="right", min_width=20)
+    table.add_column("Size", justify="right", min_width=6)
+    table.add_column("P-CHR AUC", justify="right", min_width=9)
+    table.add_column("ΔRet", justify="right", min_width=7)
     table.add_column("Avg Reranking (ms)", justify="right", min_width=20)
+    table.add_column("p95 Reranking (ms)", justify="right", min_width=20)
     table.add_column("Avg Total (ms)", justify="right", min_width=18)
     table.add_column("Reranking Overhead %", justify="right", min_width=20)
 
@@ -331,11 +407,22 @@ if __name__ == "__main__":
             if s["mean_total"] > 0
             else 0.0
         )
+        key = _combo_key(s.get("retriever_name"), s.get("reranker_name"))
+        pchr = pchr_by_combo.get(key) if key is not None else None
+        retr_pchr = retr_pchr_by_combo.get(key) if key is not None else None
+        s["p_chr_auc"] = pchr
+        s["delta_ret"] = (
+            (pchr - retr_pchr) if (pchr is not None and retr_pchr is not None) else None
+        )
+        s["n_params"] = size_by_reranker.get(s.get("reranker_name"))
         table.add_row(
             s["label"],
             str(s["n"]),
-            f"{s['mean_retrieval']:.4f} ± {s['std_retrieval']:.4f}",
+            _fmt_size(s["n_params"]),
+            "—" if pchr is None else f"{pchr:.3f}",
+            "—" if s["delta_ret"] is None else f"{s['delta_ret']:+.3f}",
             f"{s['mean_reranking']:.4f} ± {s['std_reranking']:.4f}",
+            f"{s['p95_reranking']:.4f}",
             f"{s['mean_total']:.4f} ± {s['std_total']:.4f}",
             f"{overhead_pct:.1f}%",
         )
@@ -343,7 +430,7 @@ if __name__ == "__main__":
 
     from collections import defaultdict
 
-    reranker_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    reranker_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in all_stats:
         key = s["reranker_name"].split("--")[-1] if s["reranker_name"] else "unknown"
         reranker_groups[key].append(s)
@@ -379,7 +466,7 @@ if __name__ == "__main__":
         )
     console.print(reranker_table)
 
-    retriever_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    retriever_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in all_stats:
         key = s["retriever_name"].split("--")[-1] if s["retriever_name"] else "unknown"
         retriever_groups[key].append(s)
@@ -438,6 +525,13 @@ if __name__ == "__main__":
                     if s["mean_total"] > 0
                     else 0.0
                 ),
+                "p_chr_auc": nan_to_none(s["p_chr_auc"])
+                if s.get("p_chr_auc") is not None
+                else None,
+                "delta_ret": nan_to_none(s["delta_ret"])
+                if s.get("delta_ret") is not None
+                else None,
+                "n_params": s.get("n_params"),
             }
             for s in all_stats_sorted
         ],

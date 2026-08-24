@@ -7,31 +7,29 @@ import sys
 
 sys.path.insert(0, ".")
 
-import random
-import torch
-import numpy as np
 import multiprocessing
-from tqdm.auto import tqdm
+import random
 
+import numpy as np
+import torch
+from pylate.evaluation import ColBERTTripletEvaluator
+from pylate.hf_hub.model_card import PylateModelCardData
+from pylate.losses import Contrastive
+from pylate.models import ColBERT
+from pylate.utils import ColBERTCollator
 from sentence_transformers import (
     SentenceTransformerTrainer,
     SentenceTransformerTrainingArguments,
 )
 from sentence_transformers.evaluation import SequentialEvaluator
 from sentence_transformers.training_args import BatchSamplers
+from tqdm.auto import tqdm
 
-from pylate.models import ColBERT
-from pylate.losses import Contrastive
-from pylate.evaluation import ColBERTTripletEvaluator
-from pylate.hf_hub.model_card import PylateModelCardData
-from pylate.utils import ColBERTCollator
-
+from src.reranker.cache_evaluator import CacheEvaluator
 from src.reranker.util import (
     load_langcache_sentencepairs_splits,
     to_infonce,
 )
-from src.reranker.cache_evaluator import CacheEvaluator
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Fine-tune a ColBERT model")
@@ -252,8 +250,8 @@ if __name__ == "__main__":
 
     # create evaluators for validation
     if val_dataset is not None:
-        val_evaluators_list = list()
-        anchors, positives, negatives = list(), list(), list()
+        val_evaluators_list = []
+        anchors, positives, negatives = [], [], []
         if args.num_negatives > 1:
             for row in tqdm(val_dataset_infonce, desc="Processing validation dataset"):
                 for i in range(args.num_negatives):
@@ -294,8 +292,8 @@ if __name__ == "__main__":
 
     # create evaluators for test
     if test_dataset is not None:
-        test_evaluators_list = list()
-        anchors, positives, negatives = list(), list(), list()
+        test_evaluators_list = []
+        anchors, positives, negatives = [], [], []
         if args.num_negatives > 1:
             for row in tqdm(test_dataset_infonce, desc="Processing test dataset"):
                 for i in range(args.num_negatives):
@@ -444,11 +442,11 @@ if __name__ == "__main__":
         if val_evaluator is not None:
             val_scores = val_evaluator(model=model)
         else:
-            val_scores = dict()
+            val_scores = {}
         if test_evaluator is not None:
             test_scores = test_evaluator(model=model)
         else:
-            test_scores = dict()
+            test_scores = {}
 
         scores = {**val_scores, **test_scores}
         print(f"Final model scores: {scores}")

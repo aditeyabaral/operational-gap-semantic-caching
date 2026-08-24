@@ -1,16 +1,17 @@
 import argparse
 import sys
+
 from datasets import load_dataset
 
 sys.path.insert(0, ".")
 
 import json
 import random
-import torch
+
 import numpy as np
+import torch
 
 from src.eval.retrieve_rerank_evaluator import RetrieveAndRerankEvaluator
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

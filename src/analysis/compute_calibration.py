@@ -6,16 +6,93 @@ import sys
 sys.path.insert(0, ".")
 
 import numpy as np
-import torch
-from scipy.optimize import minimize_scalar
-from sklearn.linear_model import LogisticRegression
-from sentence_transformers import CrossEncoder
+from rich.console import Console
+from rich.table import Table
 
-from src.reranker.util import load_langcache_sentencepairs_splits
+
+def _latest_params(model_entry: dict) -> dict:
+    """Return the newest dataset-version's params from a compute_calibration model entry."""
+    if not model_entry:
+        return {}
+    first_val = next(iter(model_entry.values()))
+    if isinstance(first_val, dict) and "temperature" in first_val:
+        return model_entry[sorted(model_entry.keys())[-1]]
+    return model_entry
+
+
+def _avg_reranker_pchr(cls_metrics_path: str) -> dict:
+    """Map reranker (final path component) -> mean exact P-CHR AUC over retrievers, from a cls_metrics.json."""
+    with open(cls_metrics_path) as f:
+        data = json.load(f)
+    by_reranker = {}
+    for r in data.get("results", []):
+        label = r["label"]
+        reranker = label.split("+", 1)[1] if "+" in label else label
+        kr = r["k_results"]
+        k_max = max(kr, key=lambda k: int(k))
+        by_reranker.setdefault(reranker, []).append(
+            kr[k_max]["reranker_precision_chr_auc"]
+        )
+    return {rr: float(np.mean(v)) for rr, v in by_reranker.items()}
+
+
+def report_calib_params_table(
+    params_path: str,
+    native_cls_metrics: str | None = None,
+    calibrated_cls_metrics: str | None = None,
+) -> None:
+    """Print the post-hoc calibration parameter table (Table: calib-params) as a rich table.
+
+    T, Platt a, and Platt b are read from the calibration params JSON produced by fitting.
+    Delta P-CHR AUC (change in exact P-CHR AUC under temperature/Platt scaling, averaged over
+    retrievers) is joined from a native vs calibrated cls_metrics.json pair when both are given;
+    it is exactly 0.000 because temperature and Platt scaling are strictly monotone and exact
+    P-CHR AUC is rank-invariant (Appendix: Post-Hoc Calibration).
+    """
+    with open(params_path) as f:
+        params = json.load(f)
+
+    native = _avg_reranker_pchr(native_cls_metrics) if native_cls_metrics else None
+    calibrated = (
+        _avg_reranker_pchr(calibrated_cls_metrics) if calibrated_cls_metrics else None
+    )
+
+    console = Console(width=200)
+    table = Table(
+        title="Post-hoc calibration parameters and their effect",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Reranker", justify="left")
+    table.add_column("T", justify="right")
+    table.add_column("Platt a", justify="right")
+    table.add_column("Platt b", justify="right")
+    table.add_column("Δ P-CHR AUC", justify="right")
+
+    for model_key, model_entry in params.items():
+        p = _latest_params(model_entry)
+        if not p:
+            continue
+        if native is not None and calibrated is not None:
+            d = calibrated.get(model_key, float("nan")) - native.get(
+                model_key, float("nan")
+            )
+            delta = f"{d:.3f}"
+        else:
+            delta = "0.000"  # rank-invariance: strictly monotone calibration cannot move exact P-CHR
+        table.add_row(
+            model_key,
+            f"{p['temperature']:.2f}",
+            f"{p['platt_a']:.2f}",
+            f"{p['platt_b']:.2f}",
+            delta,
+        )
+    console.print(table)
 
 
 def fit_temperature(logits: np.ndarray, labels: np.ndarray) -> float:
     """Fit temperature T by minimizing NLL: calibrated_prob = sigmoid(logit / T)."""
+    from scipy.optimize import minimize_scalar
 
     def nll(log_t):
         T = np.exp(log_t)
@@ -28,6 +105,8 @@ def fit_temperature(logits: np.ndarray, labels: np.ndarray) -> float:
 
 def fit_platt(logits: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
     """Fit Platt scaling (a, b) via logistic regression: calibrated_prob = sigmoid(a * logit + b)."""
+    from sklearn.linear_model import LogisticRegression
+
     clf = LogisticRegression(C=1e10, solver="lbfgs", max_iter=1000)
     clf.fit(logits.reshape(-1, 1), labels.astype(int))
     return float(clf.coef_[0][0]), float(clf.intercept_[0])
@@ -35,18 +114,38 @@ def fit_platt(logits: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        "Compute temperature and Platt scaling calibration parameters for a BCE reranker."
+        "Compute temperature and Platt scaling calibration parameters for a BCE reranker, "
+        "or (with --report) print the calibration-parameter table."
+    )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Report mode: print the calibration-parameter table (Table: calib-params) from an "
+        "existing --output params file (no GPU/fitting). Optionally join Δ P-CHR AUC from "
+        "--native-cls-metrics and --calibrated-cls-metrics.",
+    )
+    parser.add_argument(
+        "--native-cls-metrics",
+        type=str,
+        default=None,
+        help="Report mode: cls_metrics.json from analyze_cls.py without calibration.",
+    )
+    parser.add_argument(
+        "--calibrated-cls-metrics",
+        type=str,
+        default=None,
+        help="Report mode: cls_metrics.json from analyze_cls.py with --calibration applied.",
     )
     parser.add_argument(
         "--model-path",
         type=str,
-        required=True,
+        default=None,
         help="HuggingFace model ID or local path of the BCE reranker model.",
     )
     parser.add_argument(
         "--dataset-version",
         type=str,
-        required=True,
+        default=None,
         choices=["v1", "v2", "v3"],
         help="Dataset version to use (must match the version the model was trained on).",
     )
@@ -75,7 +174,24 @@ if __name__ == "__main__":
         help="Random seed for reproducibility.",
     )
     args = parser.parse_args()
+
+    if args.report:
+        report_calib_params_table(
+            args.output, args.native_cls_metrics, args.calibrated_cls_metrics
+        )
+        sys.exit(0)
+
+    if not args.model_path or not args.dataset_version:
+        parser.error(
+            "--model-path and --dataset-version are required unless --report is set."
+        )
+
     print(args)
+
+    import torch
+    from sentence_transformers import CrossEncoder
+
+    from src.reranker.util import load_langcache_sentencepairs_splits
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -88,9 +204,7 @@ if __name__ == "__main__":
         f"Loading train+val from redis/langcache-sentencepairs-{args.dataset_version}..."
     )
     train_dataset, _, _ = load_langcache_sentencepairs_splits(
-        subset_names={
-            f"redis/langcache-sentencepairs-{args.dataset_version}": ["all"]
-        },
+        subset_names={f"redis/langcache-sentencepairs-{args.dataset_version}": ["all"]},
         combine_train_and_val=True,
     )
     print(f"Loaded {len(train_dataset)} pairs.")
@@ -122,8 +236,7 @@ if __name__ == "__main__":
     )
     logits = np.array(logits, dtype=np.float64)
     print(
-        f"Logit stats: min={logits.min():.4f}, max={logits.max():.4f}, "
-        f"mean={logits.mean():.4f}, std={logits.std():.4f}"
+        f"Logit stats: min={logits.min():.4f}, max={logits.max():.4f}, mean={logits.mean():.4f}, std={logits.std():.4f}"
     )
 
     # Fit temperature scaling
