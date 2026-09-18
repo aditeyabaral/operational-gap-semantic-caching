@@ -114,7 +114,7 @@ def fit_platt(logits: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        "Compute temperature and Platt scaling calibration parameters for a BCE reranker, "
+        "Compute temperature and Platt scaling calibration parameters for a LangCache reranker (BCE or MNRL), "
         "or (with --report) print the calibration-parameter table."
     )
     parser.add_argument(
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         "--model-path",
         type=str,
         default=None,
-        help="HuggingFace model ID or local path of the BCE reranker model.",
+        help="HuggingFace model ID or local path of the reranker model (BCE or MNRL).",
     )
     parser.add_argument(
         "--dataset-version",

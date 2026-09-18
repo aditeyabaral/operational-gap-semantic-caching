@@ -124,7 +124,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-All scripts are run from the **repository root** as modules (`python -m src.<package>.<script>`), so imports resolve as `src.<module>`. The training scripts are the exception: they are started by path with `accelerate launch` and add the repository root to `sys.path` themselves.
+All scripts are run from the **repository root** as modules (`python -m src.<package>.<script>`), so imports resolve as `src.<module>`. The training script is the exception: it is started by path with `accelerate launch` and adds the repository root to `sys.path` itself.
 
 ### Redis
 
@@ -147,7 +147,7 @@ huggingface-cli login
 ### Hardware
 
 - **Evaluation & analysis:** a single GPU is recommended; CPU works but is slow. The analysis scripts are CPU-parallel.
-- **Training:** a CUDA GPU is required. All training scripts support single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up), and use **FlashAttention-2** with `bfloat16`.
+- **Training:** a CUDA GPU is required. The training script supports single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up), and use **FlashAttention-2** with `bfloat16`.
 
 ## Models and Datasets
 
