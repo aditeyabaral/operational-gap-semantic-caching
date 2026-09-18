@@ -90,7 +90,6 @@ These definitions make the repository self-contained; see the paper for full tre
 │   │   └── retrieve_rerank_evaluator.py  # Evaluator class (library module)
 │   ├── reranker/
 │   │   ├── cache_evaluator.py          # Cache-aware SentenceEvaluator (library module)
-│   │   ├── finetune_colbert.py         # ColBERT re-ranker fine-tuning script
 │   │   ├── finetune_crossencoder.py    # Cross-encoder re-ranker fine-tuning script
 │   │   └── util.py                     # Dataset loading and InfoNCE utilities (library module)
 │   ├── sentencepairs/
@@ -125,7 +124,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-All scripts are run from the **repository root** (each script adds the root to `sys.path`, so imports resolve as `src.<module>`).
+All scripts are run from the **repository root** as modules (`python -m src.<package>.<script>`), so imports resolve as `src.<module>`. The training script is the exception: it is started by path with `accelerate launch` and adds the repository root to `sys.path` itself.
 
 ### Redis
 
@@ -148,7 +147,7 @@ huggingface-cli login
 ### Hardware
 
 - **Evaluation & analysis:** a single GPU is recommended; CPU works but is slow. The analysis scripts are CPU-parallel.
-- **Training:** a CUDA GPU is required. All training scripts support single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up), and use **FlashAttention-2** with `bfloat16`.
+- **Training:** a CUDA GPU is required. The training script supports single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up), and use **FlashAttention-2** with `bfloat16`.
 
 ## Models and Datasets
 
@@ -198,7 +197,7 @@ docker run -d -p 6379:6379 redis/redis-stack:latest
 huggingface-cli login
 
 # 2. Evaluate one retriever + re-ranker pair at k=50 (the paper's setting)
-python src/eval/eval_reranker.py \
+python -m src.eval.eval_reranker \
   --biencoder-model-path redis/langcache-embed-v3-small \
   --reranker-model-path redis/langcache-reranker-v2-bce \
   --reranker-type crossencoder \
@@ -208,13 +207,13 @@ python src/eval/eval_reranker.py \
   --output results/example.json
 
 # 3. Fit post-hoc calibration (temperature / Platt) for the re-ranker
-python src/analysis/compute_calibration.py \
+python -m src.analysis.compute_calibration \
   --model-path redis/langcache-reranker-v2-bce \
   --dataset-version v3 \
   --output calibration_params.json
 
 # 4. Analyze: PR-AUC and P-CHR-AUC, with calibration applied
-python src/analysis/analyze_cls.py \
+python -m src.analysis.analyze_cls \
   --results-dir results/ \
   --plots-dir plots/classification/ \
   --output plots/classification/cls_metrics.json \
@@ -223,52 +222,52 @@ python src/analysis/analyze_cls.py \
 ```
 
 **Full reproduction (all tables and figures).** Every value in the paper is produced by running the
-pipeline below on the full set of evaluation results at **`k=50`** (the paper's setting — set
-`TOP_K=50` in `src/shell/run_reranker_evals.sh`, whose default is `k=5`). All analysis scripts print
+pipeline below on the full set of evaluation results at **`k=50`** (the paper's setting, and the value
+`src/shell/run_reranker_evals.sh` uses). All analysis scripts print
 their results as tables and write a JSON; no precomputed data is shipped.
 
 ```bash
 # 0. Evaluate every retriever × re-ranker combination at k=50. Requires Redis running.
-TOP_K=50 bash src/shell/run_reranker_evals.sh          # -> results/*.json (raw eval)
+bash src/shell/run_reranker_evals.sh                   # -> results/*.json (raw eval)
 
 # 1. Metrics: PR-AUC + grid-free exact P-CHR / P-VCHR AUC, ORR, and the operational-gap
 #    decomposition. Prints the full per-combo tables, the per-retriever baselines, and the
 #    per-reranker averages over retrievers.  [Tables: retriever-baselines, operational-gap,
 #    full PR-AUC / P-CHR / P-VCHR; Figure: PR & P-CHR curves]
-python src/analysis/analyze_cls.py --results-dir results/ \
+python -m src.analysis.analyze_cls --results-dir results/ \
   --plots-dir plots/classification/ --output plots/classification/cls_metrics.json
 
 # 2. Score-normalization ablation: exact P-CHR under the counterfactual transform.
 #    [Table: score-normalization ablation]  (native run is step 1; run the two counterfactuals)
-python src/analysis/analyze_cls.py --results-dir results/ --transform pool_softmax \
+python -m src.analysis.analyze_cls --results-dir results/ --transform pool_softmax \
   --plots-dir plots/ablation_softmax/ --output plots/ablation_softmax/cls_metrics.json
-python src/analysis/analyze_cls.py --results-dir results/ --transform raw_sigmoid \
+python -m src.analysis.analyze_cls --results-dir results/ --transform raw_sigmoid \
   --plots-dir plots/ablation_sigmoid/ --output plots/ablation_sigmoid/cls_metrics.json
 
 # 3. Score distributions: ROC-AUC/KS/overlap, ECE/NLL/Brier, KDE plots, and the pooled
 #    Spearman correlations of the calibration metrics vs exact P-CHR AUC.
 #    [Table: distribution metrics; Figure: KDE panels]
-python src/analysis/analyze_distribution.py --results-dir results/ \
+python -m src.analysis.analyze_distribution --results-dir results/ \
   --plots-dir plots/distribution/ --output plots/distribution/dist_metrics.json \
   --cls-metrics plots/classification/cls_metrics.json
 
 # 4. Overhead latency, joined with exact P-CHR AUC and ΔRet.  [Table: latency]
-python src/analysis/analyze_latency.py --results-dir results/ \
+python -m src.analysis.analyze_latency --results-dir results/ \
   --plots-dir plots/latency/ --output plots/latency/latency_metrics.json \
   --cls-metrics plots/classification/cls_metrics.json
 
 # 5. Post-hoc calibration parameters (T, Platt a/b) + ΔP-CHR AUC.  [Table: calib-params]
 #    First fit params per BCE/MNRL reranker (GPU), then report the table (no GPU):
-python src/analysis/compute_calibration.py --model-path <reranker> --dataset-version v3 \
+python -m src.analysis.compute_calibration --model-path <reranker> --dataset-version v3 \
   --output calibration_params.json                                   # repeat per reranker
-python src/analysis/analyze_cls.py --results-dir results/ --calibration calibration_params.json \
+python -m src.analysis.analyze_cls --results-dir results/ --calibration calibration_params.json \
   --plots-dir plots/calibrated/ --output plots/calibrated/cls_metrics.json
-python src/analysis/compute_calibration.py --report --output calibration_params.json \
+python -m src.analysis.compute_calibration --report --output calibration_params.json \
   --native-cls-metrics plots/classification/cls_metrics.json \
   --calibrated-cls-metrics plots/calibrated/cls_metrics.json
 
 # 6. Dataset statistics.  [Table: dataset-stats]
-python src/analysis/dataset_stats.py
+python -m src.analysis.dataset_stats
 ```
 
 > **K-sensitivity** (Table: K-sensitivity) is produced by step 1 as well: `analyze_cls.py` sweeps
@@ -284,12 +283,12 @@ python src/analysis/dataset_stats.py
 
 > Optional — only needed to rebuild or extend the datasets from scratch; the pre-built versions are on the Hub.
 
-Each script curates one dataset version, pushes each source split individually, then pushes a merged `all` config to the Hub under your configured account.
+Each script curates one dataset version, pushes each source split individually, then pushes a merged `all` config to the Hub as `redis/langcache-sentencepairs-v*`. To push to your own account, replace `redis` with your Hugging Face username in the `push_to_hub` calls of each script.
 
 ```bash
-python src/sentencepairs/create_sentencepairs_v1.py
-python src/sentencepairs/create_sentencepairs_v2.py
-python src/sentencepairs/create_sentencepairs_v3.py
+python -m src.sentencepairs.create_sentencepairs_v1
+python -m src.sentencepairs.create_sentencepairs_v2
+python -m src.sentencepairs.create_sentencepairs_v3
 ```
 
 Most sources download automatically from the Hub. A few must be placed under a `data/` directory at the repo root beforehand:
@@ -326,7 +325,6 @@ accelerate launch src/reranker/finetune_crossencoder.py \
   --finetuned-model-path <your-hf-username>/my-reranker \
   --dataset-version v3 \
   --loss-function bce \
-  --epsilon 0.5 \
   --batch-size 48 \
   --learning-rate 2e-4 \
   --epochs 5 \
@@ -347,7 +345,8 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--learning-rate` | `2e-4` | Peak learning rate |
 | `--epochs` | `5` | Training epochs |
 | `--warmup-ratio` | `0.10` | LR warmup fraction |
-| `--weight-decay` | `0.001` | AdamW weight decay |
+| `--weight-decay` | `0.003` | AdamW weight decay |
+| `--max-length` | `512` | Max input sequence length in tokens (longer pairs are truncated) |
 | `--eval-split` | `val` | Split used for checkpoint selection |
 | `--combine-train-and-val` | `False` | Merge train+val into the training set |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
@@ -358,49 +357,12 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 
 The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at the end of training.
 
-#### ColBERT Fine-tuning
-
-```bash
-accelerate launch src/reranker/finetune_colbert.py \
-  --pretrained-model-path lightonai/GTE-ModernColBERT-v1 \
-  --finetuned-model-path <your-hf-username>/my-colbert \
-  --dataset-version v3 \
-  --num-negatives 1 \
-  --temperature 0.02 \
-  --batch-size 48 \
-  --learning-rate 2e-4 \
-  --epochs 5 \
-  --output-dir /path/to/checkpoints
-```
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--pretrained-model-path` | `lightonai/GTE-ModernColBERT-v1` | Base ColBERT model to fine-tune |
-| `--finetuned-model-path` | `redis/langcache-colbert-v2` | Output model name / Hub ID (push target — override with your own namespace) |
-| `--query-length` / `--document-length` | `512` / `512` | Max query / document token lengths |
-| `--dataset-version` | `v3` | SentencePairs version (`v1`, `v2`, `v3`) |
-| `--train-dataset-subsets` | `["all"]` | Subset names within the dataset version |
-| `--num-negatives` | `1` | Negatives per anchor (contrastive / InfoNCE) |
-| `--temperature` | `0.02` | InfoNCE temperature |
-| `--batch-size` | `48` | Per-device train/eval batch size |
-| `--learning-rate` | `2e-4` | Peak learning rate |
-| `--epochs` | `5` | Training epochs |
-| `--warmup-ratio` | `0.10` | LR warmup fraction |
-| `--weight-decay` | `0.001` | AdamW weight decay |
-| `--eval-split` | `val` | Split used for checkpoint selection |
-| `--combine-train-and-val` | `False` | Merge train+val into the training set |
-| `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
-| `--save-total-limit` | `5` | Max checkpoints to keep |
-| `--output-dir` | `/opt/dlami/nvme/langcache-colbert-models` | Local checkpoint directory |
-| `--wandb-run-name` | `None` | Optional Weights & Biases run name |
-| `--device` / `--seed` | `cuda` / `42` | Device and random seed |
-
 ### 3. Evaluation
 
 `eval_reranker.py` runs the full two-stage pipeline against a live Redis semantic cache for **one** retriever–reranker pair and writes a result JSON to `results/`. The cache is populated with the test set's unique candidates, then every test query is retrieved (`top-k`) and re-ranked. Raw re-ranker scores are stored as-is; activation and calibration are applied later, at analysis time.
 
 ```bash
-python src/eval/eval_reranker.py \
+python -m src.eval.eval_reranker \
   --biencoder-model-path redis/langcache-embed-v3-small \
   --reranker-model-path redis/langcache-reranker-v2-bce \
   --reranker-type crossencoder \
@@ -443,10 +405,10 @@ Once `results/` is populated, the analysis scripts compute the paper's metrics a
 
 #### Score Calibration
 
-Fit **temperature** and **Platt** scaling parameters for a re-ranker on the train+val split. The output JSON is consumed by the classification and distribution analyses via `--calibration`. The paper applies and compares post-hoc calibration on both **BCE-** and **MNRL-trained** re-rankers; ColBERT-family models need no calibration, since their gap is entirely structural.
+Fit **temperature** and **Platt** scaling parameters for a re-ranker by minimizing NLL on the SentencePairs v3 validation split. The output JSON is consumed by the classification and distribution analyses via `--calibration`. The paper applies and compares post-hoc calibration on both **BCE-** and **MNRL-trained** re-rankers; ColBERT-family models need no calibration, since their gap is entirely structural.
 
 ```bash
-python src/analysis/compute_calibration.py \
+python -m src.analysis.compute_calibration \
   --model-path redis/langcache-reranker-v2-bce \
   --dataset-version v3 \
   --output calibration_params.json
@@ -455,7 +417,7 @@ python src/analysis/compute_calibration.py \
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--model-path` | *(required)* | Hub ID or local path of the re-ranker |
-| `--dataset-version` | *(required)* | Version the model was trained on (`v1`/`v2`/`v3`) |
+| `--dataset-version` | `v3` | SentencePairs version whose validation split is used for fitting (`v1`/`v2`/`v3`) |
 | `--output` | *(required)* | Calibration JSON to write/merge into |
 | `--batch-size` | `64` | Inference batch size |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
@@ -463,7 +425,7 @@ python src/analysis/compute_calibration.py \
 To print the **calibration-parameter table** (Table: calib-params) — the fitted `T`, Platt `a`/`b`, and the change in exact P-CHR AUC under calibration — pass `--report` (no GPU). Δ P-CHR AUC is exactly `0.000` because temperature/Platt scaling are strictly monotone and P-CHR AUC is rank-invariant; supplying a native and a calibrated `cls_metrics.json` verifies this from data:
 
 ```bash
-python src/analysis/compute_calibration.py --report --output calibration_params.json \
+python -m src.analysis.compute_calibration --report --output calibration_params.json \
   --native-cls-metrics plots/classification/cls_metrics.json \
   --calibrated-cls-metrics plots/calibrated/cls_metrics.json
 ```
@@ -473,7 +435,7 @@ python src/analysis/compute_calibration.py --report --output calibration_params.
 Computes PR-AUC and **exact (grid-free)** Precision–CHR / Precision–VCHR AUC for every combination across `k = 1..K`, derives the operational-gap decomposition (`Δ_op`, `Δ_str`, `Δ_util`) and **ORR**, and renders the paper's curves. In one run over all combinations it prints, as `rich` tables: the per-combo metrics with `k` as rows (the K-sensitivity values), the **per-retriever baselines** and **per-reranker averages over retrievers** tables (the two headline tables), and the three full 90-combination matrices — **PR-AUC / P-CHR AUC / P-VCHR AUC** with retrievers as rows and rerankers as columns (highest per row bolded), reproducing the appendix full-result tables.
 
 ```bash
-python src/analysis/analyze_cls.py \
+python -m src.analysis.analyze_cls \
   --results-dir results/ \
   --plots-dir plots/classification/ \
   --output plots/classification/cls_metrics.json \
@@ -500,12 +462,12 @@ KDE plots of positive vs. negative ground-truth scores per retriever and per ret
 
 ```bash
 # Run analyze_cls.py first so its cls_metrics.json exists for the P-CHR join.
-python src/analysis/analyze_distribution.py \
+python -m src.analysis.analyze_distribution \
   --results-dir results/ \
   --plots-dir plots/distribution/ \
   --output plots/distribution/dist_metrics.json \
   --calibration calibration_params.json \
-  --cls-metrics cls_metrics.json
+  --cls-metrics plots/classification/cls_metrics.json
 ```
 
 Arguments mirror `analyze_cls.py` (`--results-dir`, `--plots-dir`, `--output`, `--calibration`, `--calibration-method`, `--workers`), plus `--cls-metrics` — the `cls_metrics.json` written by `analyze_cls.py`; when given, each combo's exact P-CHR AUC is joined into the reranker table and the pooled ECE/NLL/Brier-vs-P-CHR Spearman correlations are printed. Outputs one KDE plot per unique retriever and per retriever–reranker pair (seaborn styling matching the camera-ready `fig:dist-kde`), a `rich` metrics table, and a metrics JSON.
@@ -515,11 +477,11 @@ Arguments mirror `analyze_cls.py` (`--results-dir`, `--plots-dir`, `--output`, `
 Per-query retrieval / reranking / total latency (mean, std, p95) and reranking overhead, across all combinations (`Table: latency`).
 
 ```bash
-python src/analysis/analyze_latency.py \
+python -m src.analysis.analyze_latency \
   --results-dir results/ \
   --plots-dir plots/latency/ \
   --output plots/latency/latency_metrics.json \
-  --cls-metrics cls_metrics.json \
+  --cls-metrics plots/classification/cls_metrics.json \
   --count-params
 ```
 

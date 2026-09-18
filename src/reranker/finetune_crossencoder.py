@@ -146,7 +146,13 @@ if __name__ == "__main__":
         help="Warmup as a fraction of total training steps.",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=0.001, help="Weight decay."
+        "--weight-decay", type=float, default=0.003, help="Weight decay."
+    )
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=512,
+        help="Maximum input sequence length in tokens; longer pairs are truncated.",
     )
     parser.add_argument(
         "--lr-scheduler-type",
@@ -347,6 +353,7 @@ if __name__ == "__main__":
     model = CrossEncoder(
         args.pretrained_model_path,
         num_labels=1,
+        max_length=args.max_length,
         model_card_data=model_card_data,
         device=device,
         model_kwargs={

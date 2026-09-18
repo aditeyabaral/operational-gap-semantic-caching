@@ -114,7 +114,7 @@ def fit_platt(logits: np.ndarray, labels: np.ndarray) -> tuple[float, float]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        "Compute temperature and Platt scaling calibration parameters for a BCE reranker, "
+        "Compute temperature and Platt scaling calibration parameters for a LangCache reranker (BCE or MNRL), "
         "or (with --report) print the calibration-parameter table."
     )
     parser.add_argument(
@@ -140,14 +140,14 @@ if __name__ == "__main__":
         "--model-path",
         type=str,
         default=None,
-        help="HuggingFace model ID or local path of the BCE reranker model.",
+        help="HuggingFace model ID or local path of the reranker model (BCE or MNRL).",
     )
     parser.add_argument(
         "--dataset-version",
         type=str,
-        default=None,
+        default="v3",
         choices=["v1", "v2", "v3"],
-        help="Dataset version to use (must match the version the model was trained on).",
+        help="SentencePairs version whose validation split is used for fitting (default: v3, as in the paper).",
     )
     parser.add_argument(
         "--output",
@@ -181,10 +181,8 @@ if __name__ == "__main__":
         )
         sys.exit(0)
 
-    if not args.model_path or not args.dataset_version:
-        parser.error(
-            "--model-path and --dataset-version are required unless --report is set."
-        )
+    if not args.model_path:
+        parser.error("--model-path is required unless --report is set.")
 
     print(args)
 
@@ -199,18 +197,18 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(args.seed)
     torch.set_float32_matmul_precision("high")
 
-    # Load train+val using the same strategy as finetune_crossencoder.py
+    # Fit on the validation split (paper: SentencePairs v3 validation split)
     print(
-        f"Loading train+val from redis/langcache-sentencepairs-{args.dataset_version}..."
+        f"Loading validation split from redis/langcache-sentencepairs-{args.dataset_version}..."
     )
-    train_dataset, _, _ = load_langcache_sentencepairs_splits(
+    _, val_dataset, _ = load_langcache_sentencepairs_splits(
         subset_names={f"redis/langcache-sentencepairs-{args.dataset_version}": ["all"]},
-        combine_train_and_val=True,
+        combine_train_and_val=False,
     )
-    print(f"Loaded {len(train_dataset)} pairs.")
+    print(f"Loaded {len(val_dataset)} pairs.")
 
-    pairs = list(zip(train_dataset["sentence1"], train_dataset["sentence2"]))
-    labels = np.array(train_dataset["label"], dtype=np.float64)
+    pairs = list(zip(val_dataset["sentence1"], val_dataset["sentence2"]))
+    labels = np.array(val_dataset["label"], dtype=np.float64)
     print(
         f"Label distribution: {int(labels.sum())} positives ({100 * labels.mean():.1f}%), "
         f"{int((1 - labels).sum())} negatives ({100 * (1 - labels.mean()):.1f}%)"
