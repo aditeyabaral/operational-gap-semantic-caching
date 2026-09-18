@@ -346,6 +346,7 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--epochs` | `5` | Training epochs |
 | `--warmup-ratio` | `0.10` | LR warmup fraction |
 | `--weight-decay` | `0.003` | AdamW weight decay |
+| `--max-length` | `512` | Max input sequence length in tokens (longer pairs are truncated) |
 | `--eval-split` | `val` | Split used for checkpoint selection |
 | `--combine-train-and-val` | `False` | Merge train+val into the training set |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
