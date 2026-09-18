@@ -166,6 +166,7 @@ All models and datasets introduced in the paper are published under the [`redis`
 | Cross-encoder re-ranker (MNRL) | [`redis/langcache-reranker-v2-mnrl`](https://huggingface.co/redis/langcache-reranker-v2-mnrl) |
 | Sentence-pair datasets | [`redis/langcache-sentencepairs-v1`](https://huggingface.co/datasets/redis/langcache-sentencepairs-v1) · [`v2`](https://huggingface.co/datasets/redis/langcache-sentencepairs-v2) · [`v3`](https://huggingface.co/datasets/redis/langcache-sentencepairs-v3) |
 | LLM paraphrase source | [`redis/llm-paraphrases`](https://huggingface.co/datasets/redis/llm-paraphrases) |
+| Raw evaluation runs (all 90 combinations, `k=50`) | [`redis/operational-gap-semantic-caching`](https://huggingface.co/buckets/redis/operational-gap-semantic-caching) (HF bucket) |
 
 ### Baselines evaluated
 
@@ -187,7 +188,11 @@ All three versions are pre-built and published on the Hub (linked above), so you
 
 ## Reproducing the Paper
 
-The full pipeline is **Datasets → Training → Evaluation → Analysis**. Because the datasets and models are already on the Hub, most users can skip straight to **Evaluation**.
+The full pipeline is **Datasets → Training → Evaluation → Analysis**. Because the datasets and models are already on the Hub, most users can skip straight to **Evaluation**. The raw evaluation runs behind every number in the paper are also published in the [`redis/operational-gap-semantic-caching`](https://huggingface.co/buckets/redis/operational-gap-semantic-caching) bucket (90 result JSONs, about 83 GB), so you can skip evaluation too and run the **Analysis** scripts directly on them:
+
+```bash
+hf buckets sync hf://buckets/redis/operational-gap-semantic-caching results/
+```
 
 **Quickstart (single combination):**
 
@@ -224,7 +229,7 @@ python -m src.analysis.analyze_cls \
 **Full reproduction (all tables and figures).** Every value in the paper is produced by running the
 pipeline below on the full set of evaluation results at **`k=50`** (the paper's setting, and the value
 `src/shell/run_reranker_evals.sh` uses). All analysis scripts print
-their results as tables and write a JSON; no precomputed data is shipped.
+their results as tables and write a JSON. To skip step 0, download the published evaluation runs into `results/` instead (see above).
 
 ```bash
 # 0. Evaluate every retriever × re-ranker combination at k=50. Requires Redis running.
