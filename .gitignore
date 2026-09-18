@@ -15,3 +15,6 @@ paper/
 *.txt
 *.sif
 *.pdf
+
+# ACL formatting checker (local clone)
+aclpubcheck/

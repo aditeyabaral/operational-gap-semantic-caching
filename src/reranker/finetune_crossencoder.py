@@ -146,7 +146,7 @@ if __name__ == "__main__":
         help="Warmup as a fraction of total training steps.",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=0.001, help="Weight decay."
+        "--weight-decay", type=float, default=0.003, help="Weight decay."
     )
     parser.add_argument(
         "--lr-scheduler-type",

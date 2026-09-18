@@ -90,7 +90,6 @@ These definitions make the repository self-contained; see the paper for full tre
 │   │   └── retrieve_rerank_evaluator.py  # Evaluator class (library module)
 │   ├── reranker/
 │   │   ├── cache_evaluator.py          # Cache-aware SentenceEvaluator (library module)
-│   │   ├── finetune_colbert.py         # ColBERT re-ranker fine-tuning script
 │   │   ├── finetune_crossencoder.py    # Cross-encoder re-ranker fine-tuning script
 │   │   └── util.py                     # Dataset loading and InfoNCE utilities (library module)
 │   ├── sentencepairs/
@@ -326,7 +325,6 @@ accelerate launch src/reranker/finetune_crossencoder.py \
   --finetuned-model-path <your-hf-username>/my-reranker \
   --dataset-version v3 \
   --loss-function bce \
-  --epsilon 0.5 \
   --batch-size 48 \
   --learning-rate 2e-4 \
   --epochs 5 \
@@ -347,7 +345,7 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--learning-rate` | `2e-4` | Peak learning rate |
 | `--epochs` | `5` | Training epochs |
 | `--warmup-ratio` | `0.10` | LR warmup fraction |
-| `--weight-decay` | `0.001` | AdamW weight decay |
+| `--weight-decay` | `0.003` | AdamW weight decay |
 | `--eval-split` | `val` | Split used for checkpoint selection |
 | `--combine-train-and-val` | `False` | Merge train+val into the training set |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
@@ -357,43 +355,6 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
 The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at the end of training.
-
-#### ColBERT Fine-tuning
-
-```bash
-accelerate launch src/reranker/finetune_colbert.py \
-  --pretrained-model-path lightonai/GTE-ModernColBERT-v1 \
-  --finetuned-model-path <your-hf-username>/my-colbert \
-  --dataset-version v3 \
-  --num-negatives 1 \
-  --temperature 0.02 \
-  --batch-size 48 \
-  --learning-rate 2e-4 \
-  --epochs 5 \
-  --output-dir /path/to/checkpoints
-```
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--pretrained-model-path` | `lightonai/GTE-ModernColBERT-v1` | Base ColBERT model to fine-tune |
-| `--finetuned-model-path` | `redis/langcache-colbert-v2` | Output model name / Hub ID (push target — override with your own namespace) |
-| `--query-length` / `--document-length` | `512` / `512` | Max query / document token lengths |
-| `--dataset-version` | `v3` | SentencePairs version (`v1`, `v2`, `v3`) |
-| `--train-dataset-subsets` | `["all"]` | Subset names within the dataset version |
-| `--num-negatives` | `1` | Negatives per anchor (contrastive / InfoNCE) |
-| `--temperature` | `0.02` | InfoNCE temperature |
-| `--batch-size` | `48` | Per-device train/eval batch size |
-| `--learning-rate` | `2e-4` | Peak learning rate |
-| `--epochs` | `5` | Training epochs |
-| `--warmup-ratio` | `0.10` | LR warmup fraction |
-| `--weight-decay` | `0.001` | AdamW weight decay |
-| `--eval-split` | `val` | Split used for checkpoint selection |
-| `--combine-train-and-val` | `False` | Merge train+val into the training set |
-| `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
-| `--save-total-limit` | `5` | Max checkpoints to keep |
-| `--output-dir` | `/opt/dlami/nvme/langcache-colbert-models` | Local checkpoint directory |
-| `--wandb-run-name` | `None` | Optional Weights & Biases run name |
-| `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
 ### 3. Evaluation
 
@@ -443,7 +404,7 @@ Once `results/` is populated, the analysis scripts compute the paper's metrics a
 
 #### Score Calibration
 
-Fit **temperature** and **Platt** scaling parameters for a re-ranker on the train+val split. The output JSON is consumed by the classification and distribution analyses via `--calibration`. The paper applies and compares post-hoc calibration on both **BCE-** and **MNRL-trained** re-rankers; ColBERT-family models need no calibration, since their gap is entirely structural.
+Fit **temperature** and **Platt** scaling parameters for a re-ranker by minimizing NLL on the SentencePairs v3 validation split. The output JSON is consumed by the classification and distribution analyses via `--calibration`. The paper applies and compares post-hoc calibration on both **BCE-** and **MNRL-trained** re-rankers; ColBERT-family models need no calibration, since their gap is entirely structural.
 
 ```bash
 python -m src.analysis.compute_calibration \
@@ -455,7 +416,7 @@ python -m src.analysis.compute_calibration \
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--model-path` | *(required)* | Hub ID or local path of the re-ranker |
-| `--dataset-version` | *(required)* | Version the model was trained on (`v1`/`v2`/`v3`) |
+| `--dataset-version` | `v3` | SentencePairs version whose validation split is used for fitting (`v1`/`v2`/`v3`) |
 | `--output` | *(required)* | Calibration JSON to write/merge into |
 | `--batch-size` | `64` | Inference batch size |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
