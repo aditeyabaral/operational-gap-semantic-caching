@@ -42,6 +42,7 @@ RERANKER_CANONICAL = {
 }
 RETRIEVER_CANONICAL = {
     "langcache-embed-v3-small": "LangCache-Embed-v3",
+    "langcache-embed-v3": "LangCache-Embed-v3",  # HF id before the -small rename
     "langcache-embed-v2": "LangCache-Embed-v2",
     "langcache-embed-v1": "LangCache-Embed-v1",
     "bge-base-en-v1.5": "BGE-base-en-v1.5",
