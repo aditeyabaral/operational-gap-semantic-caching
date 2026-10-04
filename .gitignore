@@ -15,6 +15,7 @@ paper/
 *.txt
 *.sif
 *.pdf
+!/poster/emnlp-2026-poster.pdf
 
 # ACL formatting checker (local clone)
 aclpubcheck/

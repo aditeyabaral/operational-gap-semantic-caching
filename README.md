@@ -4,11 +4,15 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2606.19719-b31b1b)](https://arxiv.org/abs/2606.19719)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-Official code for the paper 📄 **"Closing the Operational Gap in Semantic Caching."** [[arXiv]](https://arxiv.org/abs/2606.19719)
 
+Official code for the paper **"Closing the Operational Gap in Semantic Caching."**
+
+[[📄 arXiv](https://arxiv.org/abs/2606.19719)] [[📊 Poster](poster/emnlp-2026-poster.pdf)] [[🤗 Models and Datasets](https://huggingface.co/redis)]
+
+> [!NOTE]
 > 🎉 **Accepted at EMNLP 2026 (Industry Track).**
 
-🤗 **Models and datasets:** [`redis` on HuggingFace](https://huggingface.co/redis)
+**Authors:** Aditeya Baral, Radoslav Ralev, Iliya Sotirov Zhechev, Srijith Rajamohan, and Jen Agarwal, with support from the [Redis LangCache](https://redis.io/langcache/) team.
 
 If you use this code, the models, or the datasets, please cite:
 
@@ -99,6 +103,8 @@ These definitions make the repository self-contained; see the paper for full tre
 │   └── shell/
 │       ├── run_reranker_evals.sh               # Run all retriever–reranker eval combinations
 │       └── run_reranker_evals_for_retriever.sh # Run all rerankers for one retriever
+├── poster/
+│   └── emnlp-2026-poster.pdf            # EMNLP 2026 Industry Track conference poster
 ├── results/                            # Evaluation result JSON files (created by eval_reranker.py)
 ├── plots/                              # Analysis plots (created by the analysis scripts)
 ├── pyproject.toml
@@ -124,7 +130,8 @@ uv sync
 source .venv/bin/activate
 ```
 
-All scripts are run from the **repository root** as modules (`python -m src.<package>.<script>`), so imports resolve as `src.<module>`. The training script is the exception: it is started by path with `accelerate launch` and adds the repository root to `sys.path` itself.
+> [!IMPORTANT]
+> Run all commands from the **repository root**. Use `python -m src.<package>.<script>` so imports resolve as `src.<module>`. The training script is the exception: use `accelerate launch src/reranker/finetune_crossencoder.py`, which adds the repository root to `sys.path` itself.
 
 ### Redis
 
@@ -135,6 +142,9 @@ docker run -d -p 6379:6379 redis/redis-stack:latest
 ```
 
 By default the scripts connect to `localhost:6379` (configurable via `--redis-host` / `--redis-port`).
+
+> [!CAUTION]
+> Use a dedicated Redis instance for evaluation. The examples and sweep scripts use `--flush-cache`, which calls `FLUSHALL` and deletes **all keys in every database** on the connected Redis instance.
 
 ### Hugging Face
 
@@ -188,7 +198,10 @@ All three versions are pre-built and published on the Hub (linked above), so you
 
 ## Reproducing the Paper
 
-The full pipeline is **Datasets → Training → Evaluation → Analysis**. Because the datasets and models are already on the Hub, most users can skip straight to **Evaluation**. The raw evaluation runs behind every number in the paper are also published in the [`redis/operational-gap-semantic-caching`](https://huggingface.co/buckets/redis/operational-gap-semantic-caching) bucket (90 result JSONs, about 83 GB), so you can skip evaluation too and run the **Analysis** scripts directly on them:
+The full pipeline is **Datasets → Training → Evaluation → Analysis**.
+
+> [!TIP]
+> The datasets and models are already on the Hub, so you can start at **Evaluation**. To skip evaluation too, download the published runs from the [`redis/operational-gap-semantic-caching`](https://huggingface.co/buckets/redis/operational-gap-semantic-caching) bucket and run **Analysis** directly. The full download contains 90 result JSONs and requires about **83 GB** of disk space.
 
 ```bash
 hf buckets sync hf://buckets/redis/operational-gap-semantic-caching results/
@@ -275,18 +288,18 @@ python -m src.analysis.compute_calibration --report --output calibration_params.
 python -m src.analysis.dataset_stats
 ```
 
+> [!NOTE]
 > **K-sensitivity** (Table: K-sensitivity) is produced by step 1 as well: `analyze_cls.py` sweeps
 > `k=1..K` internally and `plots/classification/pchr_auc_vs_k.png` plus the per-combo tables report
 > exact P-CHR AUC at every `k`. The per-source dataset table (all-sources) is a provenance table from
 > the curation scripts in `src/sentencepairs/`.
 
-> **Cache reuse.** Populating the cache for a retriever is the expensive step. Pass `--flush-cache` on the **first** evaluation for each new retriever, then omit it for subsequent re-rankers that share the same retriever so the cached embeddings are reused. The shell scripts handle this automatically.
-
 ## Detailed Usage
 
 ### 1. Dataset Curation
 
-> Optional — only needed to rebuild or extend the datasets from scratch; the pre-built versions are on the Hub.
+> [!NOTE]
+> Dataset curation is **optional**: rebuild only to extend or change the datasets. The pre-built versions are on the Hub and are loaded automatically by the training and evaluation scripts.
 
 Each script curates one dataset version, pushes each source split individually, then pushes a merged `all` config to the Hub as `redis/langcache-sentencepairs-v*`. To push to your own account, replace `redis` with your Hugging Face username in the `push_to_hub` calls of each script.
 
@@ -320,9 +333,12 @@ All other sources (PAWS, MRPC, QQP, STS-B, TaPaCo, Paraphrase Collections, ChatG
 
 ### 2. Training
 
-> Optional — the trained re-rankers are on the Hub. Training requires a CUDA GPU and supports multi-GPU via `accelerate`.
+Training is optional; the trained re-rankers are already on the Hub.
 
 #### Cross-Encoder Fine-tuning
+
+> [!IMPORTANT]
+> Training requires a **CUDA GPU** and supports multi-GPU execution via `accelerate`. Set `--finetuned-model-path` to a Hub ID in **your own namespace** and `--output-dir` to your checkpoint directory. The script uploads the initial model and the trained model to that Hub ID automatically.
 
 ```bash
 accelerate launch src/reranker/finetune_crossencoder.py \
@@ -366,6 +382,9 @@ The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at 
 
 `eval_reranker.py` runs the full two-stage pipeline against a live Redis semantic cache for **one** retriever–reranker pair and writes a result JSON to `results/`. The cache is populated with the test set's unique candidates, then every test query is retrieved (`top-k`) and re-ranked. Raw re-ranker scores are stored as-is; activation and calibration are applied later, at analysis time.
 
+> [!IMPORTANT]
+> To reproduce the paper, use **`--dataset-version v3 --top-k 50`**. The evaluation CLI defaults to `--top-k 5`; the full sweep script uses `50`.
+
 ```bash
 python -m src.eval.eval_reranker \
   --biencoder-model-path redis/langcache-embed-v3-small \
@@ -401,6 +420,9 @@ To sweep all combinations, use the shell helpers:
 bash src/shell/run_reranker_evals.sh                                  # every retriever × re-ranker
 bash src/shell/run_reranker_evals_for_retriever.sh <retriever> <redis_port> [top_k]   # one retriever, all re-rankers
 ```
+
+> [!TIP]
+> **Reuse cached embeddings:** pass `--flush-cache` on the first evaluation for each new retriever, then omit it for subsequent re-rankers that share that retriever. Populating the cache is the expensive step; the shell scripts handle this reuse automatically.
 
 Each result JSON records, per query: the retrieved candidates and scores, the re-ranked candidates and scores, the ground-truth label, and retrieval/reranking/total latencies — everything the analysis scripts need.
 
