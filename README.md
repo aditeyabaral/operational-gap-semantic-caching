@@ -5,7 +5,9 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 
-Official code for the paper **"Closing the Operational Gap in Semantic Caching."** [[📄 arXiv](https://arxiv.org/abs/2606.19719)] [[📊 Poster](poster/emnlp-2026-poster.pdf)] [[🤗 Models and Datasets](https://huggingface.co/redis)]
+Official code for the paper **"Closing the Operational Gap in Semantic Caching."**
+
+[[📄 arXiv](https://arxiv.org/abs/2606.19719)] [[📊 Poster](poster/emnlp-2026-poster.pdf)] [[🤗 Models and Datasets](https://huggingface.co/redis)]
 
 > [!NOTE]
 > 🎉 **Accepted at EMNLP 2026 (Industry Track).**
