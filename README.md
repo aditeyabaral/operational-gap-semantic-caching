@@ -8,6 +8,8 @@ Official code for the paper 📄 **"Closing the Operational Gap in Semantic Cach
 
 > 🎉 **Accepted at EMNLP 2026 (Industry Track).**
 
+📊 **Conference poster:** [EMNLP 2026 poster (PDF)](poster/emnlp-2026-poster.pdf)
+
 🤗 **Models and datasets:** [`redis` on HuggingFace](https://huggingface.co/redis)
 
 If you use this code, the models, or the datasets, please cite:
@@ -99,6 +101,8 @@ These definitions make the repository self-contained; see the paper for full tre
 │   └── shell/
 │       ├── run_reranker_evals.sh               # Run all retriever–reranker eval combinations
 │       └── run_reranker_evals_for_retriever.sh # Run all rerankers for one retriever
+├── poster/
+│   └── emnlp-2026-poster.pdf            # EMNLP 2026 Industry Track conference poster (A0)
 ├── results/                            # Evaluation result JSON files (created by eval_reranker.py)
 ├── plots/                              # Analysis plots (created by the analysis scripts)
 ├── pyproject.toml
