@@ -1,13 +1,13 @@
 # Closing the Operational Gap in Semantic Caching
 
-[![Venue](https://img.shields.io/badge/EMNLP%202026-Industry%20Track-b31b1b)](https://arxiv.org/abs/2606.19719)
+[![Venue](https://img.shields.io/badge/EMNLP%202026-Industry%20Track-b31b1b)](https://aclanthology.org/2026.emnlp-industry.60/)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.19719-b31b1b)](https://arxiv.org/abs/2606.19719)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 
 Official code for the paper **"Closing the Operational Gap in Semantic Caching."**
 
-[[📄 arXiv](https://arxiv.org/abs/2606.19719)] [[📊 Poster](poster/emnlp-2026-poster.pdf)] [[🤗 Models and Datasets](https://huggingface.co/redis)]
+[[📄 Paper](https://aclanthology.org/2026.emnlp-industry.60/)] [[📝 arXiv](https://arxiv.org/abs/2606.19719)] [[📊 Poster](poster/emnlp-2026-poster.pdf)] [[🤗 Models and Datasets](https://huggingface.co/redis)]
 
 > [!NOTE]
 > 🎉 **Accepted at EMNLP 2026 (Industry Track).**
@@ -17,14 +17,24 @@ Official code for the paper **"Closing the Operational Gap in Semantic Caching."
 If you use this code, the models, or the datasets, please cite:
 
 ```bibtex
-@misc{baral2026closingoperationalgapsemantic,
-      title={Closing the Operational Gap in Semantic Caching},
-      author={Aditeya Baral and Radoslav Ralev and Iliya Sotirov Zhechev and Srijith Rajamohan and Jen Agarwal},
-      year={2026},
-      eprint={2606.19719},
-      archivePrefix={arXiv},
-      primaryClass={cs.IR},
-      url={https://arxiv.org/abs/2606.19719},
+@inproceedings{baral-etal-2026-closing,
+    title = "Closing the Operational Gap in Semantic Caching",
+    author = "Baral, Aditeya  and
+      Ralev, Radoslav  and
+      Zhechev, Iliya  and
+      Rajamohan, Srijith  and
+      Agarwal, Jen",
+    editor = "Atanasova, Pepa  and
+      Haffari, Gholamreza  and
+      Wang, Minghan",
+    booktitle = "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing: Industry Track",
+    month = oct,
+    year = "2026",
+    address = "Budapest, Hungary",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2026.emnlp-industry.60/",
+    pages = "988--1011",
+    ISBN = "979-8-89176-460-6"
 }
 ```
 
