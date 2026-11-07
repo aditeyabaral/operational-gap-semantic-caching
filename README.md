@@ -347,12 +347,12 @@ All other sources (PAWS, MRPC, QQP, STS-B, TaPaCo, Paraphrase Collections, ChatG
 
 ### 2. Training
 
-Training is optional; the trained retriever and re-rankers are already on the Hub.
+Training is optional; the trained retriever and re-rankers are already on the Hub. Both training scripts log to Weights & Biases, so run `wandb login` once (or set `WANDB_MODE=offline` to log locally).
 
 #### Cross-Encoder Fine-tuning
 
 > [!IMPORTANT]
-> Training requires a **CUDA GPU** and supports multi-GPU execution via `accelerate`. Set `--finetuned-model-path` to a Hub ID in **your own namespace** and `--output-dir` to your checkpoint directory. The script uploads the initial model and the trained model to that Hub ID automatically.
+> Training requires a **CUDA GPU** and supports multi-GPU execution via `accelerate`. Set `--finetuned-model-path` to a Hub ID in **your own namespace** and `--output-dir` to your checkpoint directory. The script uploads the initial model, checkpoints every `--save-steps`, and the trained model to that Hub ID automatically.
 
 ```bash
 accelerate launch src/reranker/finetune_crossencoder.py \
@@ -382,22 +382,24 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--warmup-ratio` | `0.10` | LR warmup fraction |
 | `--weight-decay` | `0.003` | AdamW weight decay |
 | `--max-length` | `512` | Max input sequence length in tokens (longer pairs are truncated) |
+| `--lr-scheduler-type` / `--optim` | `linear` / `adamw_torch` | LR schedule and optimizer |
 | `--eval-split` | `val` | Split used for checkpoint selection |
-| `--combine-train-and-val` | `False` | Merge train+val into the training set |
+| `--combine-train-and-val` | `False` | Merge train+val into the training set (requires `--eval-split test`) |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
 | `--save-total-limit` | `5` | Max checkpoints to keep |
 | `--output-dir` | `/opt/dlami/nvme/langcache-reranker-models` | Local checkpoint directory |
 | `--wandb-run-name` | `None` | Optional Weights & Biases run name |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
+| `--num-proc` | half the CPU cores | Processes for dataset preprocessing |
 
 The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at the end of training.
 
 #### Bi-Encoder Fine-tuning (LangCache-Embed-v3)
 
-Fine-tunes the retriever with an in-batch contrastive objective, the **ArcFace** additive angular margin loss (cosine similarity, scale 20). Each anchor is paired with its positive and one hard negative sampled from its labelled negative pairs, and every other candidate in the batch acts as an additional negative. On multiple GPUs, candidates are gathered across devices, so each anchor is scored against the global batch. Validation runs a binary classification evaluator (accuracy, precision, recall, F1 on cosine scores) and the cache-aware evaluator (PR-AUC, P-CHR AUC, overlap) every `--eval-steps`.
+Fine-tunes the retriever with an in-batch contrastive objective, the **ArcFace** additive angular margin loss (cosine similarity, scale 20). Each anchor is paired with its positive and one hard negative sampled from its labelled negative pairs (a random sentence if it has none; an anchor with no positive is used as its own positive), and every other candidate in the batch acts as an additional negative. On multiple GPUs, candidates are gathered across devices, so each anchor is scored against the global batch. Training uses fp32 weights with `bfloat16` mixed precision, and the final model is pushed in `bfloat16`. Validation runs a binary classification evaluator (accuracy, precision, recall, F1 on cosine scores) and the cache-aware evaluator (PR-AUC, P-CHR AUC, overlap) every `--eval-steps`.
 
 > [!IMPORTANT]
-> The same caveats as the cross-encoder script apply: a **CUDA GPU** is required, and the script uploads the initial and trained model to `--finetuned-model-path`, so set it to a Hub ID in **your own namespace**. Every retriever result in the paper uses the released `redis/langcache-embed-v3-small` checkpoint; retraining is not needed to reproduce them.
+> The same caveats as the cross-encoder script apply: a **CUDA GPU** is required, and the script uploads the initial model, checkpoints every `--save-steps`, and the final model to `--finetuned-model-path`, so set it to a Hub ID in **your own namespace**. Every retriever result in the paper uses the released `redis/langcache-embed-v3-small` checkpoint; retraining is not needed to reproduce them.
 
 ```bash
 accelerate launch src/retriever/finetune_biencoder.py \
@@ -418,23 +420,24 @@ accelerate launch src/retriever/finetune_biencoder.py \
 | `--dataset-version` | `v2` | SentencePairs version (`v1`, `v2`, `v3`) |
 | `--train-dataset-subsets` | `["all"]` | Subset names within the dataset version |
 | `--scale` | `20.0` | Scale (inverse temperature) for the ArcFace loss |
-| `--margin` | `0.2` | Additive angular margin in radians (`0` reduces to MNRL) |
-| `--num-negatives` | `1` | Hard negatives per anchor |
+| `--margin` | `0.2` | Additive angular margin in radians (`0` reduces to MNRL; negative values are treated as `0`) |
+| `--num-negatives` | `1` | Hard negatives per anchor, from its labelled negative pairs |
 | `--batch-size` | `48` | Per-device train/eval batch size |
 | `--learning-rate` | `2e-4` | Peak learning rate |
 | `--epochs` | `5` | Training epochs |
 | `--warmup-ratio` | `0.10` | LR warmup fraction |
 | `--weight-decay` | `0.003` | AdamW weight decay |
 | `--max-length` | `128` | Max input sequence length in tokens (longer inputs are truncated) |
-| `--eval-split` | `val` | Split used for checkpoint selection |
-| `--combine-train-and-val` | `False` | Merge train+val into the training set |
+| `--lr-scheduler-type` / `--optim` | `linear` / `adamw_torch` | LR schedule and optimizer |
+| `--eval-split` | `val` | Split (`val` or `test`) evaluated every `--eval-steps` during training (monitoring only) |
+| `--combine-train-and-val` | `False` | Merge train+val into the training set (requires `--eval-split test`) |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
 | `--save-total-limit` | `5` | Max checkpoints to keep |
 | `--output-dir` | `/opt/dlami/nvme/langcache-embed-models` | Local checkpoint directory |
 | `--wandb-run-name` | `None` | Optional Weights & Biases run name |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
-The final checkpoint is pushed to `--finetuned-model-path` at the end of training; there is no best-model selection, matching how the released checkpoint was produced.
+The final checkpoint is pushed to `--finetuned-model-path` at the end of training; there is no best-model selection, matching how the released checkpoint was produced. Final validation and test metrics are written to `<output-dir>/<model-name>/final_metrics.json`.
 
 ### 3. Evaluation
 

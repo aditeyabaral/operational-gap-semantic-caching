@@ -6,8 +6,8 @@ from src.reranker.cache_evaluator import CacheEvaluator
 class BiEncoderCacheEvaluator(CacheEvaluator):
     """CacheEvaluator for bi-encoder (SentenceTransformer) models.
 
-    Each pair is scored by the cosine similarity of its two embeddings, which equals the
-    1 - cosine distance the Redis semantic cache returns at deployment. All metrics
+    Each pair is scored by the cosine similarity of its two embeddings, i.e. 1 minus the
+    cosine distance that the Redis semantic cache returns at deployment. All metrics
     (PR AUC, PCHR/PCHR-VALID AUC, logit overlap) are inherited from CacheEvaluator.
     """
 
@@ -26,4 +26,7 @@ class BiEncoderCacheEvaluator(CacheEvaluator):
             convert_to_tensor=True,
             device=self.device,
         )
-        return pairwise_cos_sim(embeddings_a, embeddings_b).float().cpu().tolist()
+        # cosine in fp32
+        return (
+            pairwise_cos_sim(embeddings_a.float(), embeddings_b.float()).cpu().tolist()
+        )

@@ -22,7 +22,8 @@ class ArcFaceInBatchLoss(nn.Module):
         Given (anchor, positive) pairs or (anchor, positive, negative_1, ..., negative_n) tuples, each anchor is
         scored against every candidate in the batch (all positives and all hard negatives). The margin is added to
         the angle of the paired positive only, i.e. its logit becomes cos(theta + margin), so the anchor must beat
-        every other candidate by an angular margin. With margin=0 this reduces to MultipleNegativesRankingLoss.
+        every other candidate by an angular margin. With margin=0 this reduces to MultipleNegativesRankingLoss, up to
+        the clamp of cosine scores to [-1 + 1e-4, 1 - 1e-4].
 
         Args:
             model: SentenceTransformer model.
@@ -66,6 +67,7 @@ class ArcFaceInBatchLoss(nn.Module):
 
         # (batch_size, batch_size * world_size * (1 + num_negatives))
         scores = self.similarity_fct(anchors, torch.cat(candidates, dim=0))
+        # keep sin(theta) and its gradient finite when |cos(theta)| reaches 1, e.g. an anchor that is its own positive
         scores = scores.clamp(-1.0 + self.eps, 1.0 - self.eps)
 
         # anchor[i] is paired with candidate[offset + i]

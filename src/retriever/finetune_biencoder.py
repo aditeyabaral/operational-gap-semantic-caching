@@ -7,7 +7,6 @@ import sys
 
 sys.path.insert(0, ".")
 
-import multiprocessing
 import random
 
 import numpy as np
@@ -31,7 +30,9 @@ from src.retriever.cache_evaluator import BiEncoderCacheEvaluator
 from src.retriever.losses import ArcFaceInBatchLoss
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Fine-tune a BiEncoder model")
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a bi-encoder retriever with the ArcFace in-batch loss"
+    )
     parser.add_argument(
         "--pretrained-model-path",
         type=str,
@@ -42,7 +43,8 @@ if __name__ == "__main__":
         "--finetuned-model-path",
         type=str,
         default="redis/langcache-embed-v3-small",
-        help="Path to the finetuned biencoder model.",
+        help="Hub ID of the finetuned model. The model is pushed here, and its last path component "
+        "names the local output subdirectory.",
     )
     parser.add_argument(
         "--dataset-version",
@@ -59,20 +61,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--combine-train-and-val",
         action="store_true",
-        help="Combine train and val splits into a single train split.",
+        help="Combine train and val splits into a single train split. Requires --eval-split test.",
     )
     parser.add_argument(
         "--eval-split",
         type=str,
-        choices=["train", "val", "test"],
+        choices=["val", "test"],
         default="val",
-        help="Dataset split to use for evaluation during training.",
+        help="Dataset split to evaluate on during training.",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=48,
-        help="Batch size for training and evaluation.",
+        help="Per-device batch size for training and evaluation.",
     )
     parser.add_argument(
         "--learning-rate",
@@ -114,7 +116,8 @@ if __name__ == "__main__":
         "--num-negatives",
         type=int,
         default=1,
-        help="Number of hard negatives to sample for each anchor, from its labelled negative pairs.",
+        help="Number of hard negatives to sample for each anchor, from its labelled negative pairs "
+        "(random sentences if it has too few).",
     )
     parser.add_argument(
         "--scale",
@@ -126,7 +129,8 @@ if __name__ == "__main__":
         "--margin",
         type=float,
         default=0.2,
-        help="Additive angular margin in radians for the ArcFace loss. 0 reduces to MNRL.",
+        help="Additive angular margin in radians for the ArcFace loss. 0 reduces to MNRL; "
+        "negative values are treated as 0.",
     )
     parser.add_argument(
         "--warmup-ratio",
@@ -172,19 +176,13 @@ if __name__ == "__main__":
         "--device",
         type=str,
         default="cuda",
-        help="Device to run the evaluation on (e.g., 'cuda', 'mps' or 'cpu').",
+        help="Device to load the model and run the evaluators on (e.g., 'cuda', 'mps' or 'cpu').",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
         help="Random seed for reproducibility.",
-    )
-    parser.add_argument(
-        "--num-proc",
-        type=int,
-        default=max(1, multiprocessing.cpu_count() // 2),
-        help="Number of processes to use for dataset processing.",
     )
     args = parser.parse_args()
     print(args)
@@ -202,7 +200,7 @@ if __name__ == "__main__":
     save_dir = f"{args.output_dir}/{args.finetuned_model_path.split('/')[-1]}"
     os.makedirs(save_dir, exist_ok=True)
 
-    # load train and val datasets
+    # load train, val and test splits
     train_dataset, val_dataset, test_dataset = load_langcache_sentencepairs_splits(
         subset_names={
             f"redis/langcache-sentencepairs-{args.dataset_version}": args.train_dataset_subsets
@@ -328,7 +326,9 @@ if __name__ == "__main__":
         ],
     )
 
-    # load model
+    # load model in fp32 and train with bf16 autocast: fp32 master
+    # weights keep AdamW updates and weight decay from being rounded away in bf16
+    use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     model = SentenceTransformer(
         args.pretrained_model_path,
         model_card_data=model_card_data,
@@ -337,19 +337,17 @@ if __name__ == "__main__":
             "attn_implementation": "sdpa",
             # drop the unused BERT pooler so DDP sees no parameters without gradients
             "add_pooling_layer": False,
-            "dtype": torch.bfloat16
-            if torch.cuda.is_bf16_supported()
-            else torch.float32,
+            "dtype": torch.float32,
         },
     )
     model.max_seq_length = args.max_length
 
     # initialize loss
-    # gather in-batch candidates across GPUs in multi-GPU runs, as in the original training code
+    # gather in-batch candidates across processes in multi-GPU runs
     loss = ArcFaceInBatchLoss(
         model,
         scale=args.scale,
-        gather_across_devices=torch.cuda.device_count() > 1,
+        gather_across_devices=int(os.environ.get("WORLD_SIZE", "1")) > 1,
         margin=max(args.margin, 0.0),
     )
 
@@ -362,6 +360,7 @@ if __name__ == "__main__":
         learning_rate=args.learning_rate,
         lr_scheduler_type=args.lr_scheduler_type,
         optim=args.optim,
+        bf16=use_bf16,
         weight_decay=args.weight_decay,
         eval_on_start=True,
         eval_strategy="steps",
@@ -401,6 +400,8 @@ if __name__ == "__main__":
     trainer.train()
 
     # save model to HuggingFace Hub
+    if use_bf16:
+        model.to(torch.bfloat16)
     model.push_to_hub(card_model_id, exist_ok=True)
 
     # evaluate final model
