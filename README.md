@@ -394,7 +394,7 @@ The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at 
 
 #### Bi-Encoder Fine-tuning (LangCache-Embed-v3)
 
-Fine-tunes the retriever with an in-batch contrastive objective, the **ArcFace** additive angular margin loss (cosine similarity, scale 20). Each anchor is paired with its positive and one hard negative sampled from its labelled negative pairs, and every other candidate in the batch acts as an additional negative. Validation runs a binary classification evaluator (accuracy, precision, recall, F1 on cosine scores) and the cache-aware evaluator (PR-AUC, P-CHR AUC, overlap) every `--eval-steps`.
+Fine-tunes the retriever with an in-batch contrastive objective, the **ArcFace** additive angular margin loss (cosine similarity, scale 20). Each anchor is paired with its positive and one hard negative sampled from its labelled negative pairs, and every other candidate in the batch acts as an additional negative. On multiple GPUs, candidates are gathered across devices, so each anchor is scored against the global batch. Validation runs a binary classification evaluator (accuracy, precision, recall, F1 on cosine scores) and the cache-aware evaluator (PR-AUC, P-CHR AUC, overlap) every `--eval-steps`.
 
 > [!IMPORTANT]
 > The same caveats as the cross-encoder script apply: a **CUDA GPU** is required, and the script uploads the initial and trained model to `--finetuned-model-path`, so set it to a Hub ID in **your own namespace**. Every retriever result in the paper uses the released `redis/langcache-embed-v3-small` checkpoint; retraining is not needed to reproduce them.
@@ -434,7 +434,7 @@ accelerate launch src/retriever/finetune_biencoder.py \
 | `--wandb-run-name` | `None` | Optional Weights & Biases run name |
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
-The best checkpoint (by validation F1 on cosine scores) is pushed to `--finetuned-model-path` at the end of training.
+The final checkpoint is pushed to `--finetuned-model-path` at the end of training; there is no best-model selection, matching how the released checkpoint was produced.
 
 ### 3. Evaluation
 

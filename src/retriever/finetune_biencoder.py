@@ -22,7 +22,6 @@ from sentence_transformers.evaluation import (
     BinaryClassificationEvaluator,
     SequentialEvaluator,
 )
-from sentence_transformers.training_args import BatchSamplers
 
 from src.reranker.util import (
     load_langcache_sentencepairs_splits,
@@ -346,7 +345,13 @@ if __name__ == "__main__":
     model.max_seq_length = args.max_length
 
     # initialize loss
-    loss = ArcFaceInBatchLoss(model, scale=args.scale, margin=args.margin)
+    # gather in-batch candidates across GPUs in multi-GPU runs, as in the original training code
+    loss = ArcFaceInBatchLoss(
+        model,
+        scale=args.scale,
+        gather_across_devices=torch.cuda.device_count() > 1,
+        margin=max(args.margin, 0.0),
+    )
 
     # initialize training args
     training_args = SentenceTransformerTrainingArguments(
@@ -357,7 +362,6 @@ if __name__ == "__main__":
         learning_rate=args.learning_rate,
         lr_scheduler_type=args.lr_scheduler_type,
         optim=args.optim,
-        batch_sampler=BatchSamplers.NO_DUPLICATES,
         weight_decay=args.weight_decay,
         eval_on_start=True,
         eval_strategy="steps",
@@ -372,8 +376,6 @@ if __name__ == "__main__":
         run_name=args.wandb_run_name
         if args.wandb_run_name is not None
         else args.finetuned_model_path.split("/")[-1],
-        load_best_model_at_end=True,
-        metric_for_best_model=f"eval_{args.eval_split}_cls_cosine_f1",
         push_to_hub=True,
         hub_model_id=card_model_id,
         seed=args.seed,

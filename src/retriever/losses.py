@@ -13,9 +13,9 @@ class ArcFaceInBatchLoss(nn.Module):
         self,
         model: SentenceTransformer,
         scale: float = 20.0,
-        margin: float = 0.2,
         similarity_fct=util.cos_sim,
         gather_across_devices: bool = False,
+        margin: float = 0.0,
     ) -> None:
         """In-batch contrastive loss with an ArcFace additive angular margin.
 
@@ -27,9 +27,9 @@ class ArcFaceInBatchLoss(nn.Module):
         Args:
             model: SentenceTransformer model.
             scale: Output of the similarity function is multiplied by this value (inverse temperature).
-            margin: Additive angular margin in radians applied to the positive pair.
             similarity_fct: Similarity function between anchors and candidates. Should be cosine similarity.
             gather_across_devices: If True, gather the candidates across all devices before computing the loss.
+            margin: Additive angular margin in radians applied to the positive pair.
         """
         super().__init__()
         self.model = model
@@ -64,8 +64,8 @@ class ArcFaceInBatchLoss(nn.Module):
             if torch.distributed.is_initialized():
                 offset = torch.distributed.get_rank() * batch_size
 
-        # (batch_size, batch_size * world_size * (1 + num_negatives)); fp32 for a stable sqrt under bf16
-        scores = self.similarity_fct(anchors, torch.cat(candidates, dim=0)).float()
+        # (batch_size, batch_size * world_size * (1 + num_negatives))
+        scores = self.similarity_fct(anchors, torch.cat(candidates, dim=0))
         scores = scores.clamp(-1.0 + self.eps, 1.0 - self.eps)
 
         # anchor[i] is paired with candidate[offset + i]
@@ -83,9 +83,9 @@ class ArcFaceInBatchLoss(nn.Module):
     def get_config_dict(self) -> dict[str, Any]:
         return {
             "scale": self.scale,
-            "margin": self.margin,
             "similarity_fct": self.similarity_fct.__name__,
             "gather_across_devices": self.gather_across_devices,
+            "margin": self.margin,
         }
 
     @property
