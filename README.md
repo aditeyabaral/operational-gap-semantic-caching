@@ -106,6 +106,10 @@ These definitions make the repository self-contained; see the paper for full tre
 │   │   ├── cache_evaluator.py          # Cache-aware SentenceEvaluator (library module)
 │   │   ├── finetune_crossencoder.py    # Cross-encoder re-ranker fine-tuning script
 │   │   └── util.py                     # Dataset loading and InfoNCE utilities (library module)
+│   ├── retriever/
+│   │   ├── cache_evaluator.py          # Cache-aware evaluator for bi-encoders (library module)
+│   │   ├── finetune_biencoder.py       # Bi-encoder retriever (LangCache-Embed-v3) fine-tuning script
+│   │   └── losses.py                   # ArcFace in-batch contrastive loss (library module)
 │   ├── sentencepairs/
 │   │   ├── create_sentencepairs_v1.py  # Dataset curation: v1 (1M train pairs)
 │   │   ├── create_sentencepairs_v2.py  # Dataset curation: v2 (8M train pairs)
@@ -141,7 +145,7 @@ source .venv/bin/activate
 ```
 
 > [!IMPORTANT]
-> Run all commands from the **repository root**. Use `python -m src.<package>.<script>` so imports resolve as `src.<module>`. The training script is the exception: use `accelerate launch src/reranker/finetune_crossencoder.py`, which adds the repository root to `sys.path` itself.
+> Run all commands from the **repository root**. Use `python -m src.<package>.<script>` so imports resolve as `src.<module>`. The training scripts are the exception: use `accelerate launch src/reranker/finetune_crossencoder.py` or `accelerate launch src/retriever/finetune_biencoder.py`, which add the repository root to `sys.path` themselves.
 
 ### Redis
 
@@ -167,7 +171,7 @@ huggingface-cli login
 ### Hardware
 
 - **Evaluation & analysis:** a single GPU is recommended; CPU works but is slow. The analysis scripts are CPU-parallel.
-- **Training:** a CUDA GPU is required. The training script supports single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up), and use **FlashAttention-2** with `bfloat16`.
+- **Training:** a CUDA GPU is required. The training scripts support single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up) and train in `bfloat16`. The cross-encoder script uses **FlashAttention-2**; the bi-encoder script uses PyTorch SDPA attention.
 
 ## Models and Datasets
 
@@ -343,7 +347,7 @@ All other sources (PAWS, MRPC, QQP, STS-B, TaPaCo, Paraphrase Collections, ChatG
 
 ### 2. Training
 
-Training is optional; the trained re-rankers are already on the Hub.
+Training is optional; the trained retriever and re-rankers are already on the Hub.
 
 #### Cross-Encoder Fine-tuning
 
@@ -387,6 +391,50 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 
 The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at the end of training.
+
+#### Bi-Encoder Fine-tuning (LangCache-Embed-v3)
+
+Fine-tunes the retriever with an in-batch contrastive objective, the **ArcFace** additive angular margin loss (cosine similarity, scale 20). Each anchor is paired with its positive and one hard negative sampled from its labelled negative pairs, and every other candidate in the batch acts as an additional negative. Validation runs a binary classification evaluator (accuracy, precision, recall, F1 on cosine scores) and the cache-aware evaluator (PR-AUC, P-CHR AUC, overlap) every `--eval-steps`.
+
+> [!IMPORTANT]
+> The same caveats as the cross-encoder script apply: a **CUDA GPU** is required, and the script uploads the initial and trained model to `--finetuned-model-path`, so set it to a Hub ID in **your own namespace**. Every retriever result in the paper uses the released `redis/langcache-embed-v3-small` checkpoint; retraining is not needed to reproduce them.
+
+```bash
+accelerate launch src/retriever/finetune_biencoder.py \
+  --pretrained-model-path sentence-transformers/all-MiniLM-L6-v2 \
+  --finetuned-model-path <your-hf-username>/my-retriever \
+  --dataset-version v2 \
+  --batch-size 48 \
+  --learning-rate 2e-4 \
+  --epochs 5 \
+  --margin 0.2 \
+  --output-dir /path/to/checkpoints
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--pretrained-model-path` | `sentence-transformers/all-MiniLM-L6-v2` | Base bi-encoder to fine-tune |
+| `--finetuned-model-path` | `redis/langcache-embed-v3-small` | Output model name / Hub ID (also the push target — override with your own namespace) |
+| `--dataset-version` | `v2` | SentencePairs version (`v1`, `v2`, `v3`) |
+| `--train-dataset-subsets` | `["all"]` | Subset names within the dataset version |
+| `--scale` | `20.0` | Scale (inverse temperature) for the ArcFace loss |
+| `--margin` | `0.2` | Additive angular margin in radians (`0` reduces to MNRL) |
+| `--num-negatives` | `1` | Hard negatives per anchor |
+| `--batch-size` | `48` | Per-device train/eval batch size |
+| `--learning-rate` | `2e-4` | Peak learning rate |
+| `--epochs` | `5` | Training epochs |
+| `--warmup-ratio` | `0.10` | LR warmup fraction |
+| `--weight-decay` | `0.003` | AdamW weight decay |
+| `--max-length` | `128` | Max input sequence length in tokens (longer inputs are truncated) |
+| `--eval-split` | `val` | Split used for checkpoint selection |
+| `--combine-train-and-val` | `False` | Merge train+val into the training set |
+| `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
+| `--save-total-limit` | `5` | Max checkpoints to keep |
+| `--output-dir` | `/opt/dlami/nvme/langcache-embed-models` | Local checkpoint directory |
+| `--wandb-run-name` | `None` | Optional Weights & Biases run name |
+| `--device` / `--seed` | `cuda` / `42` | Device and random seed |
+
+The best checkpoint (by validation F1 on cosine scores) is pushed to `--finetuned-model-path` at the end of training.
 
 ### 3. Evaluation
 
