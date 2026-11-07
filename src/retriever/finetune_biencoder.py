@@ -394,26 +394,27 @@ if __name__ == "__main__":
     )
 
     # push the initial model to the hub
-    model.push_to_hub(card_model_id, exist_ok=True)
+    if trainer.is_world_process_zero():
+        model.push_to_hub(card_model_id, exist_ok=True)
 
     # train model
     trainer.train()
 
-    # save model to HuggingFace Hub
-    if use_bf16:
-        model.to(torch.bfloat16)
-    model.push_to_hub(card_model_id, exist_ok=True)
+    # push and evaluate the final model, on the main process only
+    if trainer.is_world_process_zero():
+        if use_bf16:
+            model.to(torch.bfloat16)
+        model.push_to_hub(card_model_id, exist_ok=True)
 
-    # evaluate final model
-    if val_evaluator is not None:
-        val_scores = val_evaluator(model=model)
-    else:
-        val_scores = {}
-    if test_evaluator is not None:
-        test_scores = test_evaluator(model=model)
-    else:
-        test_scores = {}
-    scores = {**val_scores, **test_scores}
-    print(f"Final model scores: {scores}")
-    with open(f"{save_dir}/final_metrics.json", "w") as f:
-        json.dump(scores, f, indent=4)
+        if val_evaluator is not None:
+            val_scores = val_evaluator(model=model)
+        else:
+            val_scores = {}
+        if test_evaluator is not None:
+            test_scores = test_evaluator(model=model)
+        else:
+            test_scores = {}
+        scores = {**val_scores, **test_scores}
+        print(f"Final model scores: {scores}")
+        with open(f"{save_dir}/final_metrics.json", "w") as f:
+            json.dump(scores, f, indent=4)

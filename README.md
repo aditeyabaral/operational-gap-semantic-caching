@@ -171,7 +171,7 @@ huggingface-cli login
 ### Hardware
 
 - **Evaluation & analysis:** a single GPU is recommended; CPU works but is slow. The analysis scripts are CPU-parallel.
-- **Training:** a CUDA GPU is required. The training scripts support single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up) and train in `bfloat16`. The cross-encoder script uses **FlashAttention-2**; the bi-encoder script uses PyTorch SDPA attention.
+- **Training:** a CUDA GPU is required. The training scripts support single- and multi-GPU execution via `accelerate launch` (run `accelerate config` once to set up). Both train with fp32 weights and `bfloat16` mixed precision, use PyTorch SDPA attention, and push the final model in `bfloat16`.
 
 ## Models and Datasets
 
@@ -352,7 +352,7 @@ Training is optional; the trained retriever and re-rankers are already on the Hu
 #### Cross-Encoder Fine-tuning
 
 > [!IMPORTANT]
-> Training requires a **CUDA GPU** and supports multi-GPU execution via `accelerate`. Set `--finetuned-model-path` to a Hub ID in **your own namespace** and `--output-dir` to your checkpoint directory. The script uploads the initial model, checkpoints every `--save-steps`, and the trained model to that Hub ID automatically.
+> Training requires a **CUDA GPU** and supports multi-GPU execution via `accelerate`. Set `--finetuned-model-path` to a Hub ID in **your own namespace** and `--output-dir` to your checkpoint directory. The script uploads the initial model, checkpoints every `--save-steps`, and the trained model to that Hub ID automatically. Every reranker result in the paper uses the released `redis/langcache-reranker-*` checkpoints; retraining is not needed to reproduce them.
 
 ```bash
 accelerate launch src/reranker/finetune_crossencoder.py \
@@ -383,7 +383,7 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--weight-decay` | `0.003` | AdamW weight decay |
 | `--max-length` | `512` | Max input sequence length in tokens (longer pairs are truncated) |
 | `--lr-scheduler-type` / `--optim` | `linear` / `adamw_torch` | LR schedule and optimizer |
-| `--eval-split` | `val` | Split used for checkpoint selection |
+| `--eval-split` | `val` | Split (`val` or `test`) evaluated every `--eval-steps` and used for checkpoint selection |
 | `--combine-train-and-val` | `False` | Merge train+val into the training set (requires `--eval-split test`) |
 | `--eval-steps` / `--save-steps` / `--logging-steps` | `1000` / `10000` / `1000` | Step intervals |
 | `--save-total-limit` | `5` | Max checkpoints to keep |
@@ -392,7 +392,7 @@ accelerate launch src/reranker/finetune_crossencoder.py \
 | `--device` / `--seed` | `cuda` / `42` | Device and random seed |
 | `--num-proc` | half the CPU cores | Processes for dataset preprocessing |
 
-The best checkpoint (by validation F1) is pushed to `--finetuned-model-path` at the end of training.
+At the end of training, the best checkpoint (by F1 on `--eval-split`) is evaluated in fp32, with validation and test metrics written to `<output-dir>/<model-name>/final_metrics.json`, and then pushed to `--finetuned-model-path` in `bfloat16`.
 
 #### Bi-Encoder Fine-tuning (LangCache-Embed-v3)
 
