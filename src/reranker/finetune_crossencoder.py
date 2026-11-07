@@ -36,7 +36,9 @@ from src.reranker.util import (
 )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Fine-tune a CrossEncoder model")
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a cross-encoder reranker for semantic caching"
+    )
     parser.add_argument(
         "--pretrained-model-path",
         type=str,
@@ -47,7 +49,8 @@ if __name__ == "__main__":
         "--finetuned-model-path",
         type=str,
         default="redis/langcache-reranker-v2-bce",
-        help="Path to the finetuned crossencoder model.",
+        help="Hub ID of the finetuned model. The model is pushed here, and its last path component "
+        "names the local output subdirectory.",
     )
     parser.add_argument(
         "--dataset-version",
@@ -64,20 +67,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--combine-train-and-val",
         action="store_true",
-        help="Combine train and val splits into a single train split.",
+        help="Combine train and val splits into a single train split. Requires --eval-split test.",
     )
     parser.add_argument(
         "--eval-split",
         type=str,
-        choices=["train", "val", "test"],
+        choices=["val", "test"],
         default="val",
-        help="Dataset split to use for evaluation during training.",
+        help="Dataset split to evaluate on during training and to select the best checkpoint by.",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=48,
-        help="Batch size for evaluation.",
+        help="Per-device batch size for training and evaluation.",
     )
     parser.add_argument(
         "--learning-rate",
@@ -118,7 +121,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--loss-function",
         type=str,
-        choices=["bce", "mnrl-sampled", "mnrl-positive", "mnrl", "mse"],
+        choices=["bce", "mnrl-sampled", "mnrl-positive", "mse"],
+        required=True,
         help="Loss function to use for training.",
     )
     parser.add_argument(
@@ -183,7 +187,7 @@ if __name__ == "__main__":
         "--device",
         type=str,
         default="cuda",
-        help="Device to run the evaluation on (e.g., 'cuda', 'mps' or 'cpu').",
+        help="Device to load the model and run the evaluators on (e.g., 'cuda', 'mps' or 'cpu').",
     )
     parser.add_argument(
         "--seed",
@@ -213,7 +217,7 @@ if __name__ == "__main__":
     save_dir = f"{args.output_dir}/{args.finetuned_model_path.split('/')[-1]}"
     os.makedirs(save_dir, exist_ok=True)
 
-    # load train and val datasets
+    # load train, val and test splits
     train_dataset, val_dataset, test_dataset = load_langcache_sentencepairs_splits(
         subset_names={
             f"redis/langcache-sentencepairs-{args.dataset_version}": args.train_dataset_subsets
@@ -222,10 +226,7 @@ if __name__ == "__main__":
     )
     # transform to InfoNCE format for MNRL loss
     train_dataset_infonce, val_dataset_infonce, test_dataset_infonce = None, None, None
-    if args.loss_function == "mnrl":
-        # TODO: we should replace the mnrl branch with negative mining
-        raise NotImplementedError("MNRL loss is not implemented for crossencoder")
-    elif args.loss_function == "mnrl-sampled":
+    if args.loss_function == "mnrl-sampled":
         train_dataset_infonce = to_infonce(
             train_dataset, num_negatives=args.num_negatives, seed=args.seed
         )
@@ -349,7 +350,9 @@ if __name__ == "__main__":
         ],
     )
 
-    # load model
+    # load model in fp32 and train with bf16 autocast: fp32 master weights keep AdamW
+    # updates and weight decay from being rounded away in bf16
+    use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     model = CrossEncoder(
         args.pretrained_model_path,
         num_labels=1,
@@ -357,10 +360,9 @@ if __name__ == "__main__":
         model_card_data=model_card_data,
         device=device,
         model_kwargs={
-            "attn_implementation": "flash_attention_2",
-            "dtype": torch.bfloat16
-            if torch.cuda.is_bf16_supported()
-            else torch.float32,
+            # not FlashAttention-2: it rejects the fp32 inputs the evaluators pass outside autocast
+            "attn_implementation": "sdpa",
+            "dtype": torch.float32,
         },
     )
 
@@ -406,6 +408,7 @@ if __name__ == "__main__":
         learning_rate=args.learning_rate,
         lr_scheduler_type=args.lr_scheduler_type,
         optim=args.optim,
+        bf16=use_bf16,
         batch_sampler=BatchSamplers.NO_DUPLICATES,
         weight_decay=args.weight_decay,
         eval_on_start=True,
@@ -446,24 +449,27 @@ if __name__ == "__main__":
     )
 
     # push the initial model to the hub
-    model.push_to_hub(card_model_id, exist_ok=True)
+    if trainer.is_world_process_zero():
+        model.push_to_hub(card_model_id, exist_ok=True)
 
     # train model
     trainer.train()
 
-    # save model to HuggingFace Hub
-    model.push_to_hub(card_model_id, exist_ok=True)
+    # evaluate the final model in fp32 and push it in bf16, on the main process only
+    if trainer.is_world_process_zero():
+        if val_evaluator is not None:
+            val_scores = val_evaluator(model=model)
+        else:
+            val_scores = {}
+        if test_evaluator is not None:
+            test_scores = test_evaluator(model=model)
+        else:
+            test_scores = {}
+        scores = {**val_scores, **test_scores}
+        print(f"Final model scores: {scores}")
+        with open(f"{save_dir}/final_metrics.json", "w") as f:
+            json.dump(scores, f, indent=4)
 
-    # evaluate final model
-    if val_evaluator is not None:
-        val_scores = val_evaluator(model=model)
-    else:
-        val_scores = {}
-    if test_evaluator is not None:
-        test_scores = test_evaluator(model=model)
-    else:
-        test_scores = {}
-    scores = {**val_scores, **test_scores}
-    print(f"Final model scores: {scores}")
-    with open(f"{save_dir}/final_metrics.json", "w") as f:
-        json.dump(scores, f, indent=4)
+        if use_bf16:
+            model.to(torch.bfloat16)
+        model.push_to_hub(card_model_id, exist_ok=True)
